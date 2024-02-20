@@ -108,11 +108,16 @@ install_requires = [
     'opencv_python',
     'scikit_image',
 
-    'supervision',
-    'autodistill',
-    'autodistill-grounded-sam',
-    'autodistill-yolov8',
-    'autodistill-owlv2',
+    'tator',
+
+    # Don't mess with these
+    'roboflow==1.1.19',
+    'supervision==0.19.0rc3',
+    'autodistill==0.1.26',
+    'autodistill-grounded-sam==0.1.2',
+    'autodistill_grounding_dino==0.1.3',
+    'autodistill-yolov8==0.1.4',
+    'autodistill-owlv2==0.1.1',
 ]
 
 # Installing all the other packages
