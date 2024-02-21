@@ -1,6 +1,5 @@
 import os
 import glob
-import yaml
 import shutil
 from tqdm import tqdm
 
@@ -9,7 +8,6 @@ import numpy as np
 
 import supervision as sv
 from autodistill import helpers
-from autodistill_yolov8 import YOLOv8
 from autodistill.detection import CaptionOntology
 from autodistill_grounded_sam import GroundedSAM
 from autodistill_grounding_dino import GroundingDINO
@@ -105,8 +103,9 @@ def batch_and_copy_images(root, source_folder, batch_size=100):
 
     print(f"Copies of images successfully created in batches of {batch_size}.")
 
-# TODO use the API's relative area filter instead
-def filter_detections(image, annotations, area_threshold=0.45):
+
+# TODO use the API's relative area filter instead, include confidence filter
+def filter_detections(image, annotations, area_threshold):
     """
 
     :param image:
@@ -167,46 +166,63 @@ def render_dataset(dataset, output_dir, include_boxes=True, include_masks=False)
             sink.save_image(image=image, image_name=output_file)
 
 
-def create_training_yaml(yaml_files, output_dir):
+def remove_bad_data(data_dir):
     """
 
-    :param yaml_files:
-    :param output_dir:
+    :param data_dir:
     :return:
     """
-    # Initialize variables to store combined data
-    combined_data = {'names': [], 'nc': 0, 'train': [], 'val': []}
+    # Set the paths
+    train_dir = f"{data_dir}/train"
+    valid_dir = f"{data_dir}/valid"
+    render_dir = f"{data_dir}/rendered"
 
-    try:
-        # Iterate through each YAML file
-        for yaml_file in yaml_files:
-            with open(yaml_file, 'r') as file:
-                data = yaml.safe_load(file)
+    # Make sure they exist
+    assert os.path.exists(train_dir)
+    assert os.path.exists(valid_dir)
+    assert os.path.exists(render_dir)
 
-                # If the class isn't already in the combined list
-                if data['names'] not in combined_data['names']:
-                    # Combine 'names' field
-                    combined_data['names'].extend(data['names'])
+    combined_dict = {}
 
-                    # Combine 'nc' field
-                    combined_data['nc'] += data['nc']
+    # Get all the training images and labels paths
+    train_images = glob.glob(f"{train_dir}/images/*.jpg")
+    train_labels = glob.glob(f"{train_dir}/labels/*.txt")
 
-                # Combine 'train' and 'val' paths
-                combined_data['train'].append(data['train'])
-                combined_data['val'].append(data['val'])
+    for image, label in zip(train_images, train_labels):
+        basename = os.path.basename(image).split(".")[0]
+        combined_dict[basename] = {
+            "image": image,
+            "label": label
+        }
 
-        # Create a new YAML file with the combined data
-        output_file_path = f"{output_dir}/training_data.yaml"
+    # Get all the validation images and labels paths
+    valid_images = glob.glob(f"{valid_dir}/images/*.jpg")
+    valid_labels = glob.glob(f"{valid_dir}/labels/*.txt")
 
-        with open(output_file_path, 'w') as output_file:
-            yaml.dump(combined_data, output_file)
+    for image, label in zip(valid_images, valid_labels):
+        basename = os.path.basename(image).split(".")[0]
+        combined_dict[basename] = {
+            "image": image,
+            "label": label
+        }
 
-        # Check that it was written
-        if os.path.exists(output_file_path):
-            return output_file_path
+    # Get the rendered images
+    render_images = glob.glob(f"{render_dir}/*.png")
 
-    except Exception as e:
-        raise Exception(f"ERROR: Could not output YAML file!\n{e}")
+    # Loop through the rendered images and removes those that
+    # exist from the combined dictionary.
+    for render_image in render_images:
+        basename = os.path.basename(render_image).split(".")[0]
+        if basename in combined_dict:
+            combined_dict.pop(basename)
+
+    # Finally, loop though the remaining image / labels,
+    # representing the bad data, and delete them.
+    for value in combined_dict.values():
+        print(f"NOTE: Deleting {value['image']}")
+        os.remove(value['image'])
+        print(f"NOTE: Deleting {value['label']}")
+        os.remove(value['label'])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -264,7 +280,6 @@ if __name__ == "__main__":
     # Define the workflow
     EXTRACT_FRAMES = True
     CREATE_LABELS = True
-    TRAIN_MODEL = True
 
     # Debug
     SAVE_LABELS = True
@@ -290,6 +305,12 @@ if __name__ == "__main__":
     # Large polygons shouldn't be included...
     area_threshold = 0.4
 
+    # Non-maximum suppression threshold
+    nms_thresh = 0.075
+
+    # Extract every N frames
+    frame_stride = 15
+
     # ---------------------------------------
     # Workflow
     # ---------------------------------------
@@ -299,7 +320,7 @@ if __name__ == "__main__":
         video_paths = glob.glob(f"{converted_video_dir}/*.mp4")
         print("Converted Videos Found: ", len(video_paths))
         # Extract frames from training video (if needed)
-        extract_frames(video_paths, extracted_frames_dir, frame_stride=15)
+        extract_frames(video_paths, extracted_frames_dir, frame_stride=frame_stride)
 
         # -----------------------------------------
         # Manually delete any images as needed!
@@ -356,12 +377,12 @@ if __name__ == "__main__":
                 annotations = dataset.annotations[image_name]
                 class_id = dataset.annotations[image_name].class_id
                 # Filter based on area and confidence
-                indices = filter_detections(image, annotations)
+                indices = filter_detections(image, annotations, area_threshold)
                 annotations = annotations[indices]
 
                 if DETECTION or True:
                     # Filter based on NMS; This is slow for SAM / Masks
-                    annotations = annotations.with_nms(threshold=0.075)
+                    annotations = annotations.with_nms(threshold=nms_thresh)
 
                 # Update the annotations and class IDs in dataset
                 dataset.annotations[image_name] = annotations
@@ -387,37 +408,11 @@ if __name__ == "__main__":
             # Split the filtered dataset into training / valid
             helpers.split_data(current_data_dir, record_confidence=True)
 
-        # -----------------------------------------
-        # Manually delete any images as needed!
-        # -----------------------------------------
-        response = input(f"Delete any bad labeled frames from {os.path.basename(current_data_dir)} now...")
+            # -----------------------------------------
+            # Manually delete any images as needed!
+            # -----------------------------------------
+            response = input(f"Delete any bad labeled frames from {os.path.basename(current_data_dir)} now...")
+            # Remove images and labels from train/valid if they were deleted from rendered
+            remove_bad_data(current_data_dir)
 
-    # TODO move training to a separate script
-    if TRAIN_MODEL:
-
-        # Here we loop though all the datasets in the training_data_dir,
-        # get their image / label folders, and the data.yml file.
-        yaml_files = []
-
-        dataset_folders = os.listdir(training_data_dir)
-
-        for dataset_folder in dataset_folders:
-
-            # Get the folder for the dataset
-            dataset_folder = f"{training_data_dir}/{dataset_folder}"
-            # Get the YAML file for the dataset
-            yaml_file = f"{dataset_folder}/data.yaml"
-            assert os.path.exists(yaml_file)
-            # Add to the list
-            yaml_files.append(yaml_file)
-
-        # Create a new temporary YAML file for the merged datasets
-        training_yaml = create_training_yaml(yaml_files, training_data_dir)
-
-        if DETECTION:
-            weights = "yolov8n.pt"
-        else:
-            weights = "yolov8n-seg.pt"
-
-        target_model = YOLOv8(weights)
-        target_model.train(training_yaml, epochs=25)
+    print("Done.")

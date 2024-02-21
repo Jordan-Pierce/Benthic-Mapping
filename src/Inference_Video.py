@@ -41,15 +41,15 @@ def process_video(source_weights, source_video, output_dir, start_at, end_at, co
         # Load the tracker
         tracker = sv.ByteTrack()
         # Create the annotator for detection
-        annotator = sv.BoundingBoxAnnotator()
+        box_annotator = sv.BoundingBoxAnnotator()
+        # Adds label to annotation (tracking)
+        label_annotator = sv.LabelAnnotator()
     else:
         # Otherwise use masks or polygons
         task = "segment"
-        # Create the annotator for segmentation
-        annotator = sv.PolygonAnnotator()
-
-    # Adds label to annotation (tracking)
-    label_annotator = sv.LabelAnnotator()
+        # Create the annotators for segmentation
+        mask_annotator = sv.MaskAnnotator()
+        box_annotator = sv.BoundingBoxAnnotator()
 
     # Create the video generators
     frame_generator = sv.get_video_frames_generator(source_path=source_video)
@@ -84,21 +84,20 @@ def process_video(source_weights, source_video, output_dir, start_at, end_at, co
                 if task == 'detect':
                     # Track the detections
                     detections = tracker.update_with_detections(detections)
-                    # Get the labels
                     labels = [f"#{tracker_id}" for tracker_id in detections.tracker_id]
+                    # Create an annotated version of the frame (boxes)
+                    annotated_frame = box_annotator.annotate(scene=frame.copy(), detections=detections)
+                    # Add tracking IDs
+                    annotated_frame = label_annotator.annotate(scene=annotated_frame,
+                                                               detections=detections,
+                                                               labels=labels)
                 else:
-                    labels = None
-
-                # Create an annotated version of the frame
-                annotated_frame = annotator.annotate(scene=frame.copy(), detections=detections)
-
-                # Add labels (if tracking)
-                annotated_labeled_frame = label_annotator.annotate(scene=annotated_frame,
-                                                                   detections=detections,
-                                                                   labels=labels)
+                    # Create an annotated version of the frame (masks and boxes)
+                    annotated_frame = mask_annotator.annotate(scene=frame.copy(), detections=detections)
+                    annotated_frame = box_annotator.annotate(scene=annotated_frame.copy(), detections=detections)
 
                 # Write the frame to the video
-                sink.write_frame(frame=annotated_labeled_frame)
+                sink.write_frame(frame=annotated_frame)
 
             else:
                 sink.write_frame(frame)
@@ -145,7 +144,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--conf",
-        default=0.85,
+        default=0.50,
         help="Confidence threshold for the model",
         type=float,
     )
