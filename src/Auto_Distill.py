@@ -105,7 +105,7 @@ def batch_and_copy_images(root, source_folder, batch_size=100):
 
     print(f"Copies of images successfully created in batches of {batch_size}.")
 
-
+# TODO use the API's relative area filter instead
 def filter_detections(image, annotations, area_threshold=0.45):
     """
 
@@ -262,7 +262,7 @@ if __name__ == "__main__":
     # Modify each of these as needed!
 
     # Define the workflow
-    EXTRACT_FRAMES = False
+    EXTRACT_FRAMES = True
     CREATE_LABELS = True
     TRAIN_MODEL = True
 
@@ -270,8 +270,8 @@ if __name__ == "__main__":
     SAVE_LABELS = True
 
     # CV Tasks
-    DETECTION = True
-    SEGMENTATION = False
+    DETECTION = False
+    SEGMENTATION = True
 
     # There can only be one
     assert DETECTION != SEGMENTATION
@@ -299,12 +299,12 @@ if __name__ == "__main__":
         video_paths = glob.glob(f"{converted_video_dir}/*.mp4")
         print("Converted Videos Found: ", len(video_paths))
         # Extract frames from training video (if needed)
-        extract_frames(video_paths, extracted_frames_dir, frame_stride=200)
+        extract_frames(video_paths, extracted_frames_dir, frame_stride=15)
 
         # -----------------------------------------
-        # Manually delete any images if needed!
-        # (use a debugger breakpoint to pause)
+        # Manually delete any images as needed!
         # -----------------------------------------
+        response = input(f"Delete any bad frames from {os.path.basename(extracted_frames_dir)} now...")
 
         # Get a count of the images extracted from all videos
         image_paths = sv.list_files_with_extensions(directory=extracted_frames_dir, extensions=["png", "jpg", "jpg"])
@@ -359,7 +359,7 @@ if __name__ == "__main__":
                 indices = filter_detections(image, annotations)
                 annotations = annotations[indices]
 
-                if DETECTION:
+                if DETECTION or True:
                     # Filter based on NMS; This is slow for SAM / Masks
                     annotations = annotations.with_nms(threshold=0.075)
 
@@ -386,6 +386,11 @@ if __name__ == "__main__":
         if SAVE_LABELS:
             # Split the filtered dataset into training / valid
             helpers.split_data(current_data_dir, record_confidence=True)
+
+        # -----------------------------------------
+        # Manually delete any images as needed!
+        # -----------------------------------------
+        response = input(f"Delete any bad labeled frames from {os.path.basename(current_data_dir)} now...")
 
     # TODO move training to a separate script
     if TRAIN_MODEL:
@@ -415,4 +420,4 @@ if __name__ == "__main__":
             weights = "yolov8n-seg.pt"
 
         target_model = YOLOv8(weights)
-        target_model.train(training_yaml, epochs=10)
+        target_model.train(training_yaml, epochs=25)
