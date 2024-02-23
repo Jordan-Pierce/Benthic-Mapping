@@ -1,6 +1,6 @@
 .idea
-./Data
 *.pth
 *.pt
 *.pyc
 /src/runs/
+/Data
