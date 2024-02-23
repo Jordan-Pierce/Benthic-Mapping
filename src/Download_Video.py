@@ -26,10 +26,13 @@ def convert_videos(input_files, output_dir):
         # Output file path
         output_file = os.path.join(output_dir, os.path.splitext(os.path.basename(input_file))[0] + '.mp4')
 
+<<<<<<< HEAD
         # If the file already exists, skip it
         if os.path.exists(output_file):
             continue
 
+=======
+>>>>>>> 2690db4eb8f44c537905754d122300b1a383b24e
         # FFmpeg command to convert video
         ffmpeg_cmd = [
             'ffmpeg',
@@ -136,7 +139,11 @@ def main():
                         default=os.getenv('TATOR_TOKEN'),
                         help="Tator API Token")
 
+<<<<<<< HEAD
     parser.add_argument("--project_id", type=int, default=155,
+=======
+    parser.add_argument("--project_id", type=int,
+>>>>>>> 2690db4eb8f44c537905754d122300b1a383b24e
                         help="Project ID for desired media")
 
     parser.add_argument("--media_ids", type=int, nargs='+',
