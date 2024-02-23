@@ -1,12 +1,27 @@
 import os
 import yaml
+import datetime
 
 from autodistill_yolov8 import YOLOv8
+
+from Auto_Distill import remove_bad_data
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Functions
 # ----------------------------------------------------------------------------------------------------------------------
+
+def get_now():
+    """
+
+    :return:
+    """
+    # Get the current datetime
+    now = datetime.datetime.now()
+    now = now.strftime("%Y-%m-%d_%H-%M-%S")
+
+    return now
+
 
 def create_training_yaml(yaml_files, output_dir):
     """
@@ -63,12 +78,21 @@ assert os.path.exists(root)
 training_data_dir = f"{root}/Training_Data"
 assert os.path.exists(training_data_dir)
 
+# Where to place the output model run
+run_dir = f"{root}/Runs"
+os.makedirs(run_dir, exist_ok=True)
+
 # CV Tasks
 DETECTION = False
 SEGMENTATION = True
 
 # There can only be one
 assert DETECTION != SEGMENTATION
+
+if DETECTION:
+    task = "detect"
+else:
+    task = "segment"
 
 # Number of training epochs
 num_epochs = 25
@@ -86,6 +110,8 @@ dataset_folders = os.listdir(training_data_dir)
 for dataset_folder in dataset_folders:
     # Get the folder for the dataset
     dataset_folder = f"{training_data_dir}/{dataset_folder}"
+    # Remove images and labels from train/valid if they were deleted from rendered
+    remove_bad_data(dataset_folder)
     # Get the YAML file for the dataset
     yaml_file = f"{dataset_folder}/data.yaml"
     assert os.path.exists(yaml_file)
@@ -101,9 +127,17 @@ if DETECTION:
 else:
     weights = "yolov8n-seg.pt"
 
-# Train model
+# Access pre-trained model
 target_model = YOLOv8(weights)
-target_model.train(training_yaml, epochs=num_epochs)
+
+# Train model w/ parameters
+results = target_model.train(training_yaml,
+                             epochs=num_epochs,
+                             imgsz=1280,
+                             batch=32,
+                             save_dir=f"{run_dir}/{task}/{get_now()}/train",
+                             device=0,
+                             flipud=0.5,
+                             fliplr=0.5)
 
 print("Done.")
-

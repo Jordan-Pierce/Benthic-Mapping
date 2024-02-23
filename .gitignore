@@ -2,3 +2,5 @@
 ./Data
 *.pth
 *.pt
+*.pyc
+/src/runs/

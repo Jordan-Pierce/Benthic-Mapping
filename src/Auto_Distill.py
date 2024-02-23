@@ -2,6 +2,7 @@ import os
 import glob
 import shutil
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
@@ -18,49 +19,70 @@ from autodistill_grounding_dino import GroundingDINO
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-def extract_frames(video_paths, image_dir, start_at=1500, end_at=4500, frame_stride=30):
+def extract_frames_from_video(video_path, image_dir, start_ratio=.15, end_ratio=.85, frame_stride=15):
+    """
+
+    :param video_path:
+    :param image_dir:
+    :param start_ratio:
+    :param end_ratio:
+    :param frame_stride:
+    :return:
+    """
+    # Create a name pattern
+    video_name = os.path.splitext(os.path.basename(video_path))[0]
+    image_name_pattern = video_name + "-{:05d}.png"
+
+    # Get the video feed
+    cap = cv2.VideoCapture(video_path)
+
+    # Figure out the start and end points
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    start_at = int(start_ratio * total_frames)
+    end_at = int(end_ratio * total_frames)
+
+    # Create output directory
+    os.makedirs(image_dir, exist_ok=True)
+
+    # Video is opened, frame extracted
+    success, image = cap.read()
+    frame_number = 0
+
+    if not success:
+        raise Exception("Could not open video!")
+
+    while success:
+        # Every Nth frame, that is between N and N
+        if frame_number % frame_stride == 0 and start_at <= frame_number <= end_at:
+            # Write the image to disk if it doesn't already exist
+            frame_filename = os.path.join(image_dir, image_name_pattern.format(frame_number))
+            if not os.path.exists(frame_filename):
+                cv2.imwrite(frame_filename, image)
+
+        # Continue with the video feed
+        success, image = cap.read()
+        frame_number += 1
+
+    # Release me!
+    cap.release()
+
+
+def extract_frames(video_paths, image_dir, start_ratio=.15, end_ratio=.85, frame_stride=15):
     """
 
     :param video_paths:
     :param image_dir:
-    :param start_at:
-    :param end_at:
+    :param start_ratio:
+    :param end_ratio:
     :param frame_stride:
     :return:
     """
-    # Loop through each video
-    for video_path in video_paths:
-        # Create a name pattern
-        video_name = os.path.splitext(os.path.basename(video_path))[0]
-        image_name_pattern = video_name + "-{:05d}.png"
-
-        # Get the video feed
-        cap = cv2.VideoCapture(video_path)
-
-        # Create output directory
-        os.makedirs(image_dir, exist_ok=True)
-
-        # Video is opened, frame extracted
-        success, image = cap.read()
-        frame_number = 0
-
-        if not success:
-            raise Exception("Could not open video!")
-
-        while success:
-            # Every Nth frame, that is between N and N
-            if frame_number % frame_stride == 0 and start_at <= frame_number <= end_at:
-                # Write the image to disk if it doesn't already exist
-                frame_filename = os.path.join(image_dir, image_name_pattern.format(frame_number))
-                if not os.path.exists(frame_filename):
-                    cv2.imwrite(frame_filename, image)
-
-            # Continue with the video feed
-            success, image = cap.read()
-            frame_number += 1
-
-        # Release me!
-        cap.release()
+    with ThreadPoolExecutor() as executor:
+        # Use executor to process each video in parallel
+        executor.map(
+            lambda video_path: extract_frames_from_video(video_path, image_dir, start_ratio, end_ratio, frame_stride),
+            video_paths
+        )
 
 
 def batch_and_copy_images(root, source_folder, batch_size=100):
@@ -278,7 +300,7 @@ if __name__ == "__main__":
     # Modify each of these as needed!
 
     # Define the workflow
-    EXTRACT_FRAMES = True
+    EXTRACT_FRAMES = False
     CREATE_LABELS = True
 
     # Debug
@@ -380,8 +402,8 @@ if __name__ == "__main__":
                 indices = filter_detections(image, annotations, area_threshold)
                 annotations = annotations[indices]
 
-                if DETECTION or True:
-                    # Filter based on NMS; This is slow for SAM / Masks
+                if DETECTION or SEGMENTATION:
+                    # Filter based on NMS; This is slow for SAM / Masks (too many?)
                     annotations = annotations.with_nms(threshold=nms_thresh)
 
                 # Update the annotations and class IDs in dataset

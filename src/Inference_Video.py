@@ -15,7 +15,7 @@ from Auto_Distill import filter_detections
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-def process_video(source_weights, source_video, output_dir, start_at, end_at, conf=.3, iou=.7):
+def process_video(source_weights, source_video, output_dir, task, start_at, end_at, conf=.3, iou=.7):
     """
 
     :param source_weights:
@@ -35,9 +35,12 @@ def process_video(source_weights, source_video, output_dir, start_at, end_at, co
     # Load the model
     model = YOLO(source_weights)
 
-    if model.ckpt['model'].task == 'detect':
-        # Model used for detection (include tracking)
-        task = "detect"
+    # If user didn't specify the task, use
+    # the one that the model was trained for
+    if not args.task:
+        task = model.ckpt['model'].task
+
+    if task == 'detect':
         # Load the tracker
         tracker = sv.ByteTrack()
         # Create the annotator for detection
@@ -45,8 +48,6 @@ def process_video(source_weights, source_video, output_dir, start_at, end_at, co
         # Adds label to annotation (tracking)
         label_annotator = sv.LabelAnnotator()
     else:
-        # Otherwise use masks or polygons
-        task = "segment"
         # Create the annotators for segmentation
         mask_annotator = sv.MaskAnnotator()
         box_annotator = sv.BoundingBoxAnnotator()
@@ -71,14 +72,14 @@ def process_video(source_weights, source_video, output_dir, start_at, end_at, co
             if start_at < f_idx < end_at:
 
                 # Run the frame through the model
-                result = model(frame, verbose=False, conf=conf, iou=iou)[0]
+                result = model(frame, verbose=False, conf=conf, iou=iou, imgsz=1280)[0]
                 result.obb = None
 
                 # Convert the results
                 detections = sv.Detections.from_ultralytics(result)
 
                 # Filter the detections
-                indicies = filter_detections(frame, detections)
+                indicies = filter_detections(frame, detections, area_threshold=0.40)
                 detections = detections[indicies]
 
                 if task == 'detect':
@@ -131,6 +132,12 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
+        "--task",
+        help="Override the model's task to perform "
+             "detections or segmentations (if applicable)",
+        type=str,
+    )
+    parser.add_argument(
         "--start_at",
         default=0,
         help="Frame to start inference",
@@ -158,6 +165,7 @@ if __name__ == "__main__":
         source_weights=args.source_weights,
         source_video=args.source_video,
         output_dir=args.output_dir,
+        task=args.task,
         start_at=args.start_at,
         end_at=args.end_at,
         conf=args.conf,
