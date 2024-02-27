@@ -127,7 +127,7 @@ def batch_and_copy_images(root, source_folder, batch_size=100):
 
 
 # TODO use the API's relative area filter instead, include confidence filter
-def filter_detections(image, annotations, area_threshold):
+def filter_detections(image, annotations, area_thresh):
     """
 
     :param image:
@@ -145,7 +145,7 @@ def filter_detections(image, annotations, area_threshold):
     area_ratio = bounding_box_areas / image_area
 
     # Filter bounding boxes where the area ratio is less than threshold
-    filtered_indices = np.where(area_ratio < area_threshold)[0]
+    filtered_indices = np.where(area_ratio < area_thresh)[0]
 
     if not len(filtered_indices):
         filtered_indices = np.arange(0, len(annotations))
@@ -325,10 +325,10 @@ if __name__ == "__main__":
 
     # Polygon's size as a ratio of the image
     # Large polygons shouldn't be included...
-    area_threshold = 0.4
+    area_thresh = 0.4
 
     # Non-maximum suppression threshold
-    nms_thresh = 0.075
+    nms_thresh = 0.1
 
     # Extract every N frames
     frame_stride = 15
@@ -372,8 +372,8 @@ if __name__ == "__main__":
         else:
             # Initialize the foundational base model, set the thresholds
             base_model = GroundedSAM(ontology=ontology,
-                                     box_threshold=0.05,
-                                     text_threshold=0.05)
+                                     box_threshold=0.1,
+                                     text_threshold=0.1)
             # For rendering
             include_boxes = False
             include_masks = True
@@ -398,13 +398,17 @@ if __name__ == "__main__":
                 image = dataset.images[image_name]
                 annotations = dataset.annotations[image_name]
                 class_id = dataset.annotations[image_name].class_id
-                # Filter based on area and confidence
-                indices = filter_detections(image, annotations, area_threshold)
+
+                # Filter based on area and confidence (removes large and unconfident)
+                indices = filter_detections(image, annotations, area_thresh)
                 annotations = annotations[indices]
 
-                if DETECTION or SEGMENTATION:
-                    # Filter based on NMS; This is slow for SAM / Masks (too many?)
-                    annotations = annotations.with_nms(threshold=nms_thresh)
+                # Filter based on NMS (removes all the duplicates, faster than with_nms)
+                predictions = np.column_stack((annotations.xyxy, annotations.confidence))
+                indices = sv.detection.utils.box_non_max_suppression(predictions, nms_thresh)
+                annotations = annotations[indices]
+
+                # annotations = annotations.with_nms(threshold=nms_thresh)
 
                 # Update the annotations and class IDs in dataset
                 dataset.annotations[image_name] = annotations

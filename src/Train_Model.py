@@ -2,7 +2,7 @@ import os
 import yaml
 import datetime
 
-from autodistill_yolov8 import YOLOv8
+from ultralytics import YOLO
 
 from Auto_Distill import remove_bad_data
 
@@ -68,76 +68,83 @@ def create_training_yaml(yaml_files, output_dir):
 # ----------------------------------------------------------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------------------------------------------------------
+if __name__ == '__main__':
 
-# Get the root data directory (Data); OCD
-root = os.path.dirname(os.path.dirname(os.path.realpath(__file__))) + "\\Data"
-root = root.replace("\\", "/")
-assert os.path.exists(root)
+    # Get the root data directory (Data); OCD
+    root = os.path.dirname(os.path.dirname(os.path.realpath(__file__))) + "\\Data"
+    root = root.replace("\\", "/")
+    assert os.path.exists(root)
 
-# The root folder containing *all* post-processed dataset for training
-training_data_dir = f"{root}/Training_Data"
-assert os.path.exists(training_data_dir)
+    # The root folder containing *all* post-processed dataset for training
+    training_data_dir = f"{root}/Training_Data"
+    assert os.path.exists(training_data_dir)
 
-# Where to place the output model run
-run_dir = f"{root}/Runs"
-os.makedirs(run_dir, exist_ok=True)
+    # Where to place the output model run
+    run_dir = f"{root}/Runs"
+    os.makedirs(run_dir, exist_ok=True)
 
-# CV Tasks
-DETECTION = False
-SEGMENTATION = True
+    # CV Tasks
+    DETECTION = False
+    SEGMENTATION = True
 
-# There can only be one
-assert DETECTION != SEGMENTATION
+    # There can only be one
+    assert DETECTION != SEGMENTATION
 
-if DETECTION:
-    task = "detect"
-else:
-    task = "segment"
+    if DETECTION:
+        task = "detect"
+    else:
+        task = "segment"
 
-# Number of training epochs
-num_epochs = 25
+    # Number of training epochs
+    num_epochs = 25
 
-# ----------------------
-# Dataset Creation
-# ----------------------
+    # ----------------------
+    # Dataset Creation
+    # ----------------------
 
-# Here we loop though all the datasets in the training_data_dir,
-# get their image / label folders, and the data.yml file.
-yaml_files = []
+    # Here we loop though all the datasets in the training_data_dir,
+    # get their image / label folders, and the data.yml file.
+    yaml_files = []
 
-dataset_folders = os.listdir(training_data_dir)
+    dataset_folders = os.listdir(training_data_dir)
 
-for dataset_folder in dataset_folders:
-    # Get the folder for the dataset
-    dataset_folder = f"{training_data_dir}/{dataset_folder}"
-    # Remove images and labels from train/valid if they were deleted from rendered
-    remove_bad_data(dataset_folder)
-    # Get the YAML file for the dataset
-    yaml_file = f"{dataset_folder}/data.yaml"
-    assert os.path.exists(yaml_file)
-    # Add to the list
-    yaml_files.append(yaml_file)
+    for dataset_folder in dataset_folders:
+        # Get the folder for the dataset
+        dataset_folder = f"{training_data_dir}/{dataset_folder}"
+        # Remove images and labels from train/valid if they were deleted from rendered
+        remove_bad_data(dataset_folder)
+        # Get the YAML file for the dataset
+        yaml_file = f"{dataset_folder}/data.yaml"
+        assert os.path.exists(yaml_file)
+        # Add to the list
+        yaml_files.append(yaml_file)
 
-# Create a new temporary YAML file for the merged datasets
-training_yaml = create_training_yaml(yaml_files, training_data_dir)
+    # Create a new temporary YAML file for the merged datasets
+    training_yaml = create_training_yaml(yaml_files, training_data_dir)
 
-# Get weights based on task
-if DETECTION:
-    weights = "yolov8n.pt"
-else:
-    weights = "yolov8n-seg.pt"
+    # Get weights based on task
+    if DETECTION:
+        weights = "yolov8n.pt"
+    else:
+        weights = "yolov8n-seg.pt"
 
-# Access pre-trained model
-target_model = YOLOv8(weights)
+    # Name of the run
+    run_name = f"{get_now()}_{weights.split('.')[0]}"
 
-# Train model w/ parameters
-results = target_model.train(training_yaml,
-                             epochs=num_epochs,
-                             imgsz=1280,
-                             batch=32,
-                             save_dir=f"{run_dir}/{task}/{get_now()}/train",
-                             device=0,
-                             flipud=0.5,
-                             fliplr=0.5)
+    # Access pre-trained model
+    target_model = YOLO(weights)
 
-print("Done.")
+    # Train model w/ parameters
+    results = target_model.train(data=training_yaml,
+                                 cache=False,
+                                 device=0,
+                                 epochs=num_epochs,
+                                 patience=int(num_epochs * .3),
+                                 batch=16,
+                                 imgsz=1280,
+                                 project=run_dir,
+                                 name=run_name,
+                                 plots=True,
+                                 single_cls=True)
+
+    print("Done.")

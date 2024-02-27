@@ -21,12 +21,14 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
     :param source_weights:
     :param source_video:
     :param output_dir:
-    :param start_art:
+    :param task:
+    :param start_at:
     :param end_at:
     :param conf:
     :param iou:
     :return:
     """
+
     # Create the target path
     target_video_path = f"{output_dir}/{os.path.basename(source_video)}"
     # Create the target directory if it doesn't exist
@@ -35,22 +37,21 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
     # Load the model
     model = YOLO(source_weights)
 
-    # If user didn't specify the task, use
-    # the one that the model was trained for
-    if not args.task:
-        task = model.ckpt['model'].task
-
     if task == 'detect':
         # Load the tracker
         tracker = sv.ByteTrack()
         # Create the annotator for detection
         box_annotator = sv.BoundingBoxAnnotator()
         # Adds label to annotation (tracking)
-        label_annotator = sv.LabelAnnotator()
-    else:
+        labeler = sv.LabelAnnotator()
+
+    elif args.task == 'segment':
         # Create the annotators for segmentation
         mask_annotator = sv.MaskAnnotator()
         box_annotator = sv.BoundingBoxAnnotator()
+
+    else:
+        raise Exception("ERROR: Specify --task [detect, segment]")
 
     # Create the video generators
     frame_generator = sv.get_video_frames_generator(source_path=source_video)
@@ -65,33 +66,45 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
     # Frame count
     f_idx = 0
 
+    # Area threshold
+    area = 1.1
+
     # Loop through all the frames
     with sv.VideoSink(target_path=target_video_path, video_info=video_info) as sink:
         for frame in tqdm(frame_generator, total=video_info.total_frames):
 
+            # Only make predictions within range
             if start_at < f_idx < end_at:
 
-                # Run the frame through the model
-                result = model(frame, verbose=False, conf=conf, iou=iou, imgsz=1280)[0]
+                # Run the frame through the model and make predictions
+                result = model(frame,
+                               conf=conf,
+                               iou=iou,
+                               imgsz=1280,
+                               half=True,
+                               augment=True,
+                               verbose=False,
+                               show=True)[0]
+
+                # Version issues
                 result.obb = None
 
                 # Convert the results
                 detections = sv.Detections.from_ultralytics(result)
 
                 # Filter the detections
-                indicies = filter_detections(frame, detections, area_threshold=0.40)
-                detections = detections[indicies]
+                indices = filter_detections(frame, detections, area_thresh=area)
+                detections = detections[indices]
 
                 if task == 'detect':
                     # Track the detections
                     detections = tracker.update_with_detections(detections)
                     labels = [f"#{tracker_id}" for tracker_id in detections.tracker_id]
+
                     # Create an annotated version of the frame (boxes)
                     annotated_frame = box_annotator.annotate(scene=frame.copy(), detections=detections)
-                    # Add tracking IDs
-                    annotated_frame = label_annotator.annotate(scene=annotated_frame,
-                                                               detections=detections,
-                                                               labels=labels)
+                    annotated_frame = labeler.annotate(scene=annotated_frame, detections=detections, labels=labels)
+
                 else:
                     # Create an annotated version of the frame (masks and boxes)
                     annotated_frame = mask_annotator.annotate(scene=frame.copy(), detections=detections)
@@ -101,8 +114,10 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
                 sink.write_frame(frame=annotated_frame)
 
             else:
+                # Write the original frame, without detections
                 sink.write_frame(frame)
 
+            # Increase frame count
             f_idx += 1
 
 
@@ -133,8 +148,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--task",
-        help="Override the model's task to perform "
-             "detections or segmentations (if applicable)",
+        required=True,
+        help="Task to perform [detect, segment], if applicable",
         type=str,
     )
     parser.add_argument(
@@ -151,12 +166,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--conf",
-        default=0.50,
+        default=0.15,
         help="Confidence threshold for the model",
         type=float,
     )
     parser.add_argument(
-        "--iou", default=0.5, help="IOU threshold for the model", type=float
+        "--iou",
+        default=0.3,
+        help="IOU threshold for the model",
+        type=float
     )
 
     args = parser.parse_args()

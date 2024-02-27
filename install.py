@@ -106,6 +106,7 @@ install_requires = [
     'matplotlib',
     'Pillow',
     'opencv_python',
+    "opencv-contrib-python"
     'scikit_image',
 
     'tator',

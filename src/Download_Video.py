@@ -34,10 +34,10 @@ def convert_videos(input_files, output_dir):
         ffmpeg_cmd = [
             'ffmpeg',
             '-i', input_file,
-            '-c:v', 'libx264',  # Change the codec if needed
-            '-crf', '23',  # Adjust the quality (lower is better quality, 18-28 is a good range)
-            '-c:a', 'aac',  # AAC audio codec
-            '-strict', 'experimental',  # Needed for some FFmpeg versions
+            '-c:v', 'libx264',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-strict', 'experimental',
             output_file
         ]
 
@@ -98,6 +98,7 @@ def download_video(api_token, project_id, media_ids):
             # Get the video handler
             media = api.get_media(media_id)
             media_name, ext = media.name.split(".")
+            media_name = media_name.replace(":", "_")
             output_video_path = f"{raw_video_dir}/{media_name}_converted.{ext}"
             os.makedirs(raw_video_dir, exist_ok=True)
             print(f"NOTE: Downloading {media.name}...")
@@ -136,7 +137,7 @@ def main():
                         default=os.getenv('TATOR_TOKEN'),
                         help="Tator API Token")
 
-    parser.add_argument("--project_id", type=int, default=155,
+    parser.add_argument("--project_id", type=int, default=70,
                         help="Project ID for desired media")
 
     parser.add_argument("--media_ids", type=int, nargs='+',
