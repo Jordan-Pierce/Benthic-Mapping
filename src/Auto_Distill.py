@@ -126,31 +126,26 @@ def batch_and_copy_images(root, source_folder, batch_size=100):
     print(f"Copies of images successfully created in batches of {batch_size}.")
 
 
-# TODO use the API's relative area filter instead, include confidence filter
-def filter_detections(image, annotations, area_thresh):
+def filter_detections(image, annotations, area_thresh, conf_thresh=0.0):
     """
 
     :param image:
     :param annotations:
-    :param area_threshold:
-    :return indices:
+    :param area_thresh:
+    :param conf_thresh:
+    :return annotations:
     """
-    # Calculate the area of the image
-    image_area = image.shape[0] * image.shape[1]
 
-    # Calculate the area of each bounding box
-    bounding_box_areas = annotations.box_area
+    height, width, channels = image.shape
+    image_area = height * width
 
-    # Calculate the ratio of bounding box area to image area
-    area_ratio = bounding_box_areas / image_area
+    # Filter by area
+    annotations = annotations[(annotations.box_area / image_area) < area_thresh]
 
-    # Filter bounding boxes where the area ratio is less than threshold
-    filtered_indices = np.where(area_ratio < area_thresh)[0]
+    # Filter by confidence
+    annotations = annotations[annotations.confidence > conf_thresh]
 
-    if not len(filtered_indices):
-        filtered_indices = np.arange(0, len(annotations))
-
-    return filtered_indices
+    return annotations
 
 
 def render_dataset(dataset, output_dir, include_boxes=True, include_masks=False):
@@ -400,15 +395,12 @@ if __name__ == "__main__":
                 class_id = dataset.annotations[image_name].class_id
 
                 # Filter based on area and confidence (removes large and unconfident)
-                indices = filter_detections(image, annotations, area_thresh)
-                annotations = annotations[indices]
+                annotations = filter_detections(image, annotations, area_thresh)
 
                 # Filter based on NMS (removes all the duplicates, faster than with_nms)
                 predictions = np.column_stack((annotations.xyxy, annotations.confidence))
                 indices = sv.detection.utils.box_non_max_suppression(predictions, nms_thresh)
                 annotations = annotations[indices]
-
-                # annotations = annotations.with_nms(threshold=nms_thresh)
 
                 # Update the annotations and class IDs in dataset
                 dataset.annotations[image_name] = annotations

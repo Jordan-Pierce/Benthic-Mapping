@@ -67,7 +67,10 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
     f_idx = 0
 
     # Area threshold
-    area = 1.1
+    area_thresh = 1.1
+
+    # Image size
+    imgsz = [1088, 1280]
 
     # Loop through all the frames
     with sv.VideoSink(target_path=target_video_path, video_info=video_info) as sink:
@@ -80,9 +83,10 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
                 result = model(frame,
                                conf=conf,
                                iou=iou,
-                               imgsz=1280,
+                               imgsz=imgsz,
                                half=True,
                                augment=True,
+                               max_det=1000,
                                verbose=False,
                                show=True)[0]
 
@@ -93,8 +97,7 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
                 detections = sv.Detections.from_ultralytics(result)
 
                 # Filter the detections
-                indices = filter_detections(frame, detections, area_thresh=area)
-                detections = detections[indices]
+                detections = filter_detections(frame, detections, area_thresh)
 
                 if task == 'detect':
                     # Track the detections
