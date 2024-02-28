@@ -96,7 +96,7 @@ if __name__ == '__main__':
         task = "segment"
 
     # Number of training epochs
-    num_epochs = 25
+    num_epochs = 20
 
     # ----------------------
     # Dataset Creation
@@ -109,8 +109,13 @@ if __name__ == '__main__':
     dataset_folders = os.listdir(training_data_dir)
 
     for dataset_folder in dataset_folders:
+
         # Get the folder for the dataset
         dataset_folder = f"{training_data_dir}/{dataset_folder}"
+
+        if not os.path.isdir(dataset_folder):
+            continue
+
         # Remove images and labels from train/valid if they were deleted from rendered
         remove_bad_data(dataset_folder)
         # Get the YAML file for the dataset
@@ -124,12 +129,12 @@ if __name__ == '__main__':
 
     # Get weights based on task
     if DETECTION:
-        weights = "yolov8n.pt"
+        weights = "yolov8s.pt"
     else:
-        weights = "yolov8n-seg.pt"
+        weights = "yolov8s-seg.pt"
 
     # Name of the run
-    run_name = f"{get_now()}_{weights.split('.')[0]}"
+    run_name = f"{get_now()}_{task}_{weights.split('.')[0]}"
 
     # Access pre-trained model
     target_model = YOLO(weights)
@@ -138,13 +143,14 @@ if __name__ == '__main__':
     results = target_model.train(data=training_yaml,
                                  cache=False,
                                  device=0,
+                                 half=True,
                                  epochs=num_epochs,
                                  patience=int(num_epochs * .3),
-                                 batch=16,
-                                 imgsz=1280,
+                                 batch=8,
+                                 imgsz=1080,
                                  project=run_dir,
                                  name=run_name,
+                                 save_period=4,
                                  plots=True,
                                  single_cls=True)
-
     print("Done.")

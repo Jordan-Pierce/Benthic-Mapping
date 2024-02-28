@@ -1,0 +1,12 @@
+version: '3'
+
+services:
+  sfm:
+    build: .
+    environment:
+      - PROJECT_ID=${PROJECT_ID}
+      - MEDIA_IDS=${MEDIA_IDS}
+      - HOST=${HOST}
+      - TOKEN=${TOKEN}
+    volumes:
+      - "./Data/:/workdir/Data/"

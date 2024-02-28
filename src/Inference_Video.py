@@ -44,11 +44,15 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
         box_annotator = sv.BoundingBoxAnnotator()
         # Adds label to annotation (tracking)
         labeler = sv.LabelAnnotator()
+        # TTA
+        augment = True
 
     elif args.task == 'segment':
         # Create the annotators for segmentation
         mask_annotator = sv.MaskAnnotator()
         box_annotator = sv.BoundingBoxAnnotator()
+        # TTA
+        augment = False
 
     else:
         raise Exception("ERROR: Specify --task [detect, segment]")
@@ -56,6 +60,16 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
     # Create the video generators
     frame_generator = sv.get_video_frames_generator(source_path=source_video)
     video_info = sv.VideoInfo.from_video_path(video_path=source_video)
+
+    # Image size (native resolution)
+    height = int(video_info.height)
+    width = int(video_info.width)
+
+    # Ensure both values are divisible by 32
+    height = height // 32 * 32
+    width = width // 32 * 32
+
+    imgsz = [height, width]
 
     # Where to start and end inference
     if start_at <= 0:
@@ -68,9 +82,6 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
 
     # Area threshold
     area_thresh = 1.1
-
-    # Image size
-    imgsz = [1088, 1280]
 
     # Loop through all the frames
     with sv.VideoSink(target_path=target_video_path, video_info=video_info) as sink:
@@ -85,8 +96,8 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
                                iou=iou,
                                imgsz=imgsz,
                                half=True,
-                               augment=True,
-                               max_det=1000,
+                               augment=augment,
+                               max_det=2000,
                                verbose=False,
                                show=True)[0]
 
@@ -169,13 +180,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--conf",
-        default=0.15,
+        default=0.05,
         help="Confidence threshold for the model",
         type=float,
     )
     parser.add_argument(
         "--iou",
-        default=0.3,
+        default=0.5,
         help="IOU threshold for the model",
         type=float
     )

@@ -126,7 +126,7 @@ def batch_and_copy_images(root, source_folder, batch_size=100):
     print(f"Copies of images successfully created in batches of {batch_size}.")
 
 
-def filter_detections(image, annotations, area_thresh, conf_thresh=0.0):
+def filter_detections(image, annotations, area_thresh=1.0, conf_thresh=0.0):
     """
 
     :param image:
@@ -139,8 +139,30 @@ def filter_detections(image, annotations, area_thresh, conf_thresh=0.0):
     height, width, channels = image.shape
     image_area = height * width
 
-    # Filter by area
-    annotations = annotations[(annotations.box_area / image_area) < area_thresh]
+    # Filter by relative area first
+    annotations = annotations[(annotations.box_area / image_area) <= area_thresh]
+
+    # Get the box areas
+    boxes = annotations.xyxy
+    num_boxes = len(boxes)
+
+    is_large_box = np.zeros(num_boxes, dtype=bool)
+
+    for i, box1 in enumerate(boxes):
+        x1, y1, x2, y2 = box1
+
+        # Count the number of smaller boxes contained within box1
+        contained_count = np.sum(
+            (boxes[:, 0] >= x1) &
+            (boxes[:, 1] >= y1) &
+            (boxes[:, 2] <= x2) &
+            (boxes[:, 3] <= y2)
+        )
+
+        # Check if box1 is a large box containing at least two smaller boxes
+        is_large_box[i] = contained_count >= 3
+
+    annotations = annotations[~is_large_box]
 
     # Filter by confidence
     annotations = annotations[annotations.confidence > conf_thresh]
@@ -272,6 +294,12 @@ if __name__ == "__main__":
 
     # Auto labeled data; this is also temporary until being filtered
     auto_labeled_dir = f"{root}/Auto_Labeled"
+
+    # If it exists from last time (exited early) delete
+    if os.path.exists(auto_labeled_dir):
+        shutil.rmtree(auto_labeled_dir)
+
+    # Create the directory
     os.makedirs(auto_labeled_dir, exist_ok=True)
 
     # The root folder containing *all* post-processed dataset for training
@@ -319,8 +347,8 @@ if __name__ == "__main__":
     })
 
     # Polygon's size as a ratio of the image
-    # Large polygons shouldn't be included...
-    area_thresh = 0.4
+    # Large polygons shouldn't be included.
+    area_thresh = 1.0
 
     # Non-maximum suppression threshold
     nms_thresh = 0.1
@@ -367,10 +395,10 @@ if __name__ == "__main__":
         else:
             # Initialize the foundational base model, set the thresholds
             base_model = GroundedSAM(ontology=ontology,
-                                     box_threshold=0.1,
-                                     text_threshold=0.1)
+                                     box_threshold=0.05,
+                                     text_threshold=0.05)
             # For rendering
-            include_boxes = False
+            include_boxes = True
             include_masks = True
 
         # Loop through the temp folders of images
