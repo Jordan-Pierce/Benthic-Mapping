@@ -24,16 +24,18 @@ COPY requirements.txt /workdir/
 RUN python3.8 -m pip install -U pip
 RUN python3.8 -m pip install -r requirements.txt
 
+# Copy over the script and model
+COPY Algorithm/ /workdir/
+# Create a data directory
+RUN mkdir -p /workdir/Data
+
 # Store license key as environmental variable
 ENV PROJECT_ID=PROJECT_ID
 ENV MEDIA_IDS=MEDIA_IDS
 ENV HOST=HOST
 ENV TOKEN=TOKEN
-
-# Copy over the script and model
-COPY Algorithm/ /workdir/
-# Create a data directory
-RUN mkdir -p /workdir/Data
+ENV START_AT=START_AT
+ENV END_AT=END_AT
 
 # Specify the default command to run when the container starts
 CMD ["python3.8", "/workdir/infer.py"]

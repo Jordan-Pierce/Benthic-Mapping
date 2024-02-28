@@ -8,5 +8,7 @@ services:
       - MEDIA_IDS=${MEDIA_IDS}
       - HOST=${HOST}
       - TOKEN=${TOKEN}
+      - START_AT=${START_AT}
+      - END_AT=${END_AT}
     volumes:
       - "./Data/:/workdir/Data/"
