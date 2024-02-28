@@ -1,7 +1,7 @@
 version: '3'
 
 services:
-  sfm:
+  algorithm:
     build: .
     environment:
       - PROJECT_ID=${PROJECT_ID}
