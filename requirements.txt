@@ -9,6 +9,7 @@ opencv-python
 opencv-contrib-python
 scikit_image
 tator
+ffmpeg-python
 roboflow==1.1.19
 supervision==0.19.0rc3
 autodistill==0.1.26

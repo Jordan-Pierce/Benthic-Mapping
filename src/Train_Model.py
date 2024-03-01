@@ -146,7 +146,7 @@ if __name__ == '__main__':
                                  half=True,
                                  epochs=num_epochs,
                                  patience=int(num_epochs * .3),
-                                 batch=8,
+                                 batch=4,
                                  imgsz=1080,
                                  project=run_dir,
                                  name=run_name,

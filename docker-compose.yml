@@ -5,10 +5,12 @@ services:
     build: .
     environment:
       - PROJECT_ID=${PROJECT_ID}
-      - MEDIA_IDS=${MEDIA_IDS}
+      - MEDIA_ID=${MEDIA_ID}
       - HOST=${HOST}
       - TOKEN=${TOKEN}
       - START_AT=${START_AT}
       - END_AT=${END_AT}
+      - CONFIDENCE=${CONFIDENCE}
+      - IOU=${IOU}
     volumes:
       - "./Data/:/workdir/Data/"

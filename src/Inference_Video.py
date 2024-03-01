@@ -46,6 +46,8 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
         labeler = sv.LabelAnnotator()
         # TTA
         augment = True
+        # Not applicable
+        retina_masks = False
 
     elif args.task == 'segment':
         # Create the annotators for segmentation
@@ -53,6 +55,8 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
         box_annotator = sv.BoundingBoxAnnotator()
         # TTA
         augment = False
+        # Use high quality masks
+        retina_masks = True
 
     else:
         raise Exception("ERROR: Specify --task [detect, segment]")
@@ -99,6 +103,7 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
                                augment=augment,
                                max_det=2000,
                                verbose=False,
+                               retina_masks=retina_masks,
                                show=True)[0]
 
                 # Version issues
