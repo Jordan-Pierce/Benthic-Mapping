@@ -232,16 +232,18 @@ def main():
     iou = os.getenv("IOU")
 
     # Do checks: if empty, exit early
-    # pass
+    if None in [token, project_id, media_id, start_at, end_at, conf, iou]:
+        print("ERROR: Missing parameter value(s)!")
+        return
 
     try:
-        algorithm(token=os.getenv('TATOR_TOKEN'),
-                  project_id=155,
-                  media_id="16406663",
-                  start_at=0,
-                  end_at=300,
-                  conf=0.1,
-                  iou=0.5)
+        algorithm(token=token,
+                  project_id=project_id,
+                  media_id=media_id,
+                  start_at=start_at,
+                  end_at=end_at,
+                  conf=conf,
+                  iou=iou)
 
         print("Done.")
 
