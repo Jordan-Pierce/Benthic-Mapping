@@ -12,5 +12,6 @@ services:
       - END_AT=${END_AT}
       - CONFIDENCE=${CONFIDENCE}
       - IOU=${IOU}
+      - DEBUG=${DEBUG}
     volumes:
       - "./Data/:/workdir/Data/"

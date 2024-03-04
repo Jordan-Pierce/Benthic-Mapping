@@ -12,6 +12,7 @@ RUN apt update && \
         libcurl4 \
         libsm6 \
         libxext6 \
+        libglib2.0-0\
     && rm -rf /var/lib/apt/lists/*
 
 # Set the workdir
@@ -29,14 +30,6 @@ COPY Algorithm/ /workdir/
 
 # Create a data directory
 RUN mkdir -p /workdir/Data
-
-# Store license key as environmental variable
-ENV PROJECT_ID=PROJECT_ID
-ENV MEDIA_ID=MEDIA_ID
-ENV HOST=HOST
-ENV TOKEN=TOKEN
-ENV START_AT=START_AT
-ENV END_AT=END_AT
 
 # Specify the default command to run when the container starts
 CMD ["python3", "/workdir/infer.py"]
