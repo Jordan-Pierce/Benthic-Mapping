@@ -172,6 +172,7 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
     :param end_at:
     :param conf:
     :param iou:
+    :param debug:
     :return:
     """
     # ------------------------------------------------
