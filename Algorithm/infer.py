@@ -98,7 +98,7 @@ def mask_to_polygons(masks):
     # Iterate over the remaining masks and handle overlap before adding them to result_mask
     for mask in masks[1:]:
 
-        # First erode it
+        # First erode and dilate it to clean off curves
         mask = cv2.erode(mask, None, iterations=6)
         mask = cv2.dilate(mask, None, iterations=1)
 
@@ -114,23 +114,23 @@ def mask_to_polygons(masks):
         non_overlap_regions = cv2.bitwise_or(non_overlap_regions, mask2_no_overlap)
         result_mask = cv2.bitwise_or(result_mask_no_overlap, mask)
 
-    # Find contours in the non-overlapping regions
-    contours, _ = cv2.findContours(non_overlap_regions, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
     # Find contours in the mask
     contours, _ = cv2.findContours(result_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Draw the filled contours on the result_mask
-    cv2.drawContours(result_mask, contours, -1, 255, thickness=cv2.FILLED)
 
     # Initialize a list to store polygon points
     polygons = []
 
     # Iterate over the contours
     for contour in contours:
+
         # Remove invalid polygons
-        if len(contour) <= 2:
+        if len(contour) <= 3:
             continue
+
+        # Simplify the contour
+        epsilon_length = 0.0025 * cv2.arcLength(contour, True)
+        contour = cv2.approxPolyDP(contour, epsilon_length, True)
+
         # Convert the contour to a numpy array and append to the list
         polygons.append(np.squeeze(contour))
 
@@ -402,6 +402,7 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
 def main():
     """
 
+    :return:
     """
     try:
 
@@ -436,3 +437,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
