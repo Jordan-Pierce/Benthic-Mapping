@@ -82,57 +82,63 @@ def filter_detections(image, annotations, area_thresh=0.005, conf_thresh=0.0):
 def mask_to_polygons(masks):
     """
 
-    :param masks:
-    :return:
     """
-    # Ensure at least two masks are provided
-    if len(masks) < 2:
-        raise ValueError("At least two masks are required.")
+    # First, create versions of each mask that only contains the largest segment
+    # Sometimes a mask (representing what's inside the bbox) can contain multiple segments
+    # that are disconnected, so remove those excess areas.
+    largest_masks = []
 
-    # Initialize result_mask with the first mask
-    result_mask = masks[0]
+    for mask in masks:
+        # Do a little clean up first
+        mask = cv2.erode(mask, None, iterations=4)
+        mask = cv2.dilate(mask, None, iterations=2)
+        # Create an empty mask
+        largest_mask = np.zeros_like(mask, dtype=np.uint8)
+        # Find contours in the mask
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Find the largest contour
+        largest_contour = max(contours, key=cv2.contourArea)
+        # Fill in the mask
+        cv2.drawContours(largest_mask, [largest_contour], 0, 255, thickness=cv2.FILLED)
+        # Add to list
+        largest_masks.append(largest_mask)
 
-    # Keep track of the non-overlapping regions
-    non_overlap_regions = result_mask.copy()
+    # Next, see if there's an intersection between any two masks. If there is
+    # calculate the intersection, and give it to the smaller mask, removing it
+    # from the larger mask
 
-    # Iterate over the remaining masks and handle overlap before adding them to result_mask
-    for mask in masks[1:]:
+    for i in range(len(largest_masks)):
+        for j in range(len(largest_masks)):
+            # If it's the same mask continue
+            if i == j:
+                continue
 
-        # First erode and dilate it to clean off curves
-        mask = cv2.erode(mask, None, iterations=6)
-        mask = cv2.dilate(mask, None, iterations=1)
+            # The mask in the outer, and in loop
+            mask_1 = largest_masks[i].copy()
+            mask_2 = largest_masks[j].copy()
 
-        # Find the intersection of the two masks
-        intersection = cv2.bitwise_and(result_mask, mask)
+            # Perform bitwise AND operation to get the intersection
+            intersection_mask = cv2.bitwise_and(mask_1, mask_2)
 
-        # Remove the intersection from both masks
-        mask1_no_overlap = cv2.subtract(result_mask, intersection)
-        mask2_no_overlap = cv2.subtract(mask, intersection)
+            if np.any(intersection_mask):
+                # Give the intersection to the smaller polygon by updating
+                # the original mask in the list, and leave the other one as-is
+                if mask_1.sum() > mask_2.sum():
+                    largest_masks[i] = mask_1 & ~intersection_mask
+                else:
+                    largest_masks[j] = mask_2 & ~intersection_mask
 
-        # Add the non-overlapped masks
-        result_mask_no_overlap = cv2.bitwise_or(mask1_no_overlap, mask2_no_overlap)
-        non_overlap_regions = cv2.bitwise_or(non_overlap_regions, mask2_no_overlap)
-        result_mask = cv2.bitwise_or(result_mask_no_overlap, mask)
-
-    # Find contours in the mask
-    contours, _ = cv2.findContours(result_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # Initialize a list to store polygon points
+    # Finally, get the contours for each of the masks
     polygons = []
 
-    # Iterate over the contours
-    for contour in contours:
-
-        # Remove invalid polygons
-        if len(contour) <= 3:
-            continue
-
-        # Simplify the contour
-        epsilon_length = 0.0025 * cv2.arcLength(contour, True)
-        contour = cv2.approxPolyDP(contour, epsilon_length, True)
-
+    for mask in largest_masks:
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Find the largest contour
+        largest_contour = max(contours, key=cv2.contourArea)
+        epsilon_length = 0.0025 * cv2.arcLength(largest_contour, True)
+        largest_contour = cv2.approxPolyDP(largest_contour, epsilon_length, True)
         # Convert the contour to a numpy array and append to the list
-        polygons.append(np.squeeze(contour))
+        polygons.append(largest_contour.squeeze())
 
     return polygons
 
@@ -140,9 +146,6 @@ def mask_to_polygons(masks):
 def polygons_to_points(polygons, image):
     """
 
-    :param polygons:
-    :param image:
-    :return:
     """
     normalized_polygons = []
 
@@ -172,7 +175,6 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
     :param end_at:
     :param conf:
     :param iou:
-    :param debug:
     :return:
     """
     # ------------------------------------------------
@@ -402,26 +404,30 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
 def main():
     """
 
-    :return:
     """
     try:
 
+        # Fill in the variables from env
         token = os.getenv("TOKEN")
         project_id = os.getenv("PROJECT_ID")
         media_id = os.getenv("MEDIA_ID")
-        start_at = int(os.getenv("START_AT"))
-        end_at = int(os.getenv("END_AT"))
-        conf = float(os.getenv("CONFIDENCE"))
-        iou = float(os.getenv("IOU"))
-        debug = os.getenv('DEBUG')
+        start_at = os.getenv("START_AT")
+        end_at = os.getenv("END_AT")
+        conf = os.getenv("CONFIDENCE")
+        iou = os.getenv("IOU")
+        debug = os.getenv("DEBUG")
 
         # Do checks: if empty, exit early
-        if None in [token, project_id, media_id, start_at, end_at, conf, iou]:
+        if None in [token, project_id, media_id, start_at, end_at]:
             raise Exception("ERROR: Missing parameter value(s)!")
 
-        algorithm(token=token,
-                  project_id=project_id,
-                  media_id=media_id,
+        # If the user didn't provide, use default values
+        conf = conf if conf else 0.1
+        iou = iou if iou else 0.1
+
+        algorithm(token=str(token),
+                  project_id=str(project_id),
+                  media_id=str(media_id),
                   start_at=int(start_at),
                   end_at=int(end_at),
                   conf=float(conf),
@@ -437,4 +443,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
