@@ -2,12 +2,8 @@ import os.path
 import argparse
 from tqdm import tqdm
 
-import numpy as np
-
 import supervision as sv
 from ultralytics import YOLO
-
-from Auto_Distill import filter_detections
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -15,7 +11,7 @@ from Auto_Distill import filter_detections
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-def process_video(source_weights, source_video, output_dir, task, start_at, end_at, conf=.3, iou=.7):
+def process_video(source_weights, source_video, output_dir, task, start_at, end_at, conf=.3, iou=.7, show=False):
     """
 
     :param source_weights:
@@ -26,9 +22,9 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
     :param end_at:
     :param conf:
     :param iou:
+    :param show:
     :return:
     """
-
     # Create the target path
     target_video_path = f"{output_dir}/{os.path.basename(source_video)}"
     # Create the target directory if it doesn't exist
@@ -65,16 +61,6 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
     frame_generator = sv.get_video_frames_generator(source_path=source_video)
     video_info = sv.VideoInfo.from_video_path(video_path=source_video)
 
-    # Image size (native resolution)
-    height = int(video_info.height)
-    width = int(video_info.width)
-
-    # Ensure both values are divisible by 32
-    height = height // 32 * 32
-    width = width // 32 * 32
-
-    imgsz = [height, width]
-
     # Where to start and end inference
     if start_at <= 0:
         start_at = 0
@@ -83,9 +69,6 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
 
     # Frame count
     f_idx = 0
-
-    # Area threshold
-    area_thresh = 1.1
 
     # Loop through all the frames
     with sv.VideoSink(target_path=target_video_path, video_info=video_info) as sink:
@@ -98,22 +81,18 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
                 result = model(frame,
                                conf=conf,
                                iou=iou,
-                               imgsz=imgsz,
                                half=True,
                                augment=augment,
                                max_det=2000,
                                verbose=False,
                                retina_masks=retina_masks,
-                               show=True)[0]
+                               show=show)[0]
 
                 # Version issues
                 result.obb = None
 
                 # Convert the results
                 detections = sv.Detections.from_ultralytics(result)
-
-                # Filter the detections
-                detections = filter_detections(frame, detections, area_thresh)
 
                 if task == 'detect':
                     # Track the detections
@@ -195,6 +174,11 @@ if __name__ == "__main__":
         help="IOU threshold for the model",
         type=float
     )
+    parser.add_argument(
+        "--show",
+        action='store_true',
+        help="Display the inference video",
+    )
 
     args = parser.parse_args()
 
@@ -207,4 +191,6 @@ if __name__ == "__main__":
         end_at=args.end_at,
         conf=args.conf,
         iou=args.iou,
+        show=args.show
     )
+

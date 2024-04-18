@@ -110,13 +110,12 @@ install_requires = [
     'tator',
 
     # Don't mess with these
-    'roboflow==1.1.19',
-    'supervision==0.19.0rc3',
-    'autodistill==0.1.26',
-    'autodistill-grounded-sam==0.1.2',
-    'autodistill_grounding_dino==0.1.3',
-    'autodistill-yolov8==0.1.4',
-    'autodistill-owlv2==0.1.1',
+    'roboflow',
+    'supervision',
+    'autodistill',
+    'autodistill-grounded-sam',
+    'autodistill_grounding_dino',
+    'autodistill-yolov8',
 ]
 
 # Installing all the other packages

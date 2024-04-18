@@ -129,9 +129,9 @@ if __name__ == '__main__':
 
     # Get weights based on task
     if DETECTION:
-        weights = "yolov8s.pt"
+        weights = "yolov9c.pt"
     else:
-        weights = "yolov8s-seg.pt"
+        weights = "yolov9c-seg.pt"
 
     # Name of the run
     run_name = f"{get_now()}_{task}_{weights.split('.')[0]}"
@@ -146,8 +146,7 @@ if __name__ == '__main__':
                                  half=True,
                                  epochs=num_epochs,
                                  patience=int(num_epochs * .3),
-                                 batch=4,
-                                 imgsz=1080,
+                                 batch=16,
                                  project=run_dir,
                                  name=run_name,
                                  save_period=4,
