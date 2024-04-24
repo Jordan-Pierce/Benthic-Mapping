@@ -111,7 +111,7 @@ install_requires = [
 
     # Don't mess with these
     'ultralytics',
-    'sahi'
+    'sahi',
     'supervision',
     'autodistill',
     'autodistill-grounded-sam',
