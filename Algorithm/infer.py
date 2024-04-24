@@ -1,4 +1,5 @@
 import os
+import glob
 import shutil
 import traceback
 import concurrent.futures
@@ -7,8 +8,17 @@ import cv2
 import numpy as np
 
 import tator
+
+import torch
 import supervision as sv
+
+from ultralytics import SAM
 from ultralytics import YOLO
+from ultralytics.engine.results import Results
+
+from sahi import AutoDetectionModel
+from sahi.utils.cv import read_image
+from sahi.predict import get_sliced_prediction
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -35,50 +45,6 @@ def download_frame(api, media, frame_idx, downloaded_frames_dir):
         raise Exception(f"ERROR: Could not get frame {frame_idx} from {media.id}.\n{e}")
 
 
-def filter_detections(image, annotations, area_thresh=0.005, conf_thresh=0.0):
-    """
-
-    :param image:
-    :param annotations:
-    :param area_thresh:
-    :param conf_thresh:
-    :return annotations:
-    """
-
-    height, width, channels = image.shape
-    image_area = height * width
-
-    # Filter by relative area first
-    annotations = annotations[(annotations.box_area / image_area) >= area_thresh]
-
-    # Get the box areas
-    boxes = annotations.xyxy
-    num_boxes = len(boxes)
-
-    is_large_box = np.zeros(num_boxes, dtype=bool)
-
-    for i, box1 in enumerate(boxes):
-        x1, y1, x2, y2 = box1
-
-        # Count the number of smaller boxes contained within box1
-        contained_count = np.sum(
-            (boxes[:, 0] >= x1) &
-            (boxes[:, 1] >= y1) &
-            (boxes[:, 2] <= x2) &
-            (boxes[:, 3] <= y2)
-        )
-
-        # Check if box1 is a large box containing at least two smaller boxes
-        is_large_box[i] = contained_count >= 3
-
-    annotations = annotations[~is_large_box]
-
-    # Filter by confidence
-    annotations = annotations[annotations.confidence > conf_thresh]
-
-    return annotations
-
-
 def mask_to_polygons(masks):
     """
 
@@ -86,52 +52,18 @@ def mask_to_polygons(masks):
     # First, create versions of each mask that only contains the largest segment
     # Sometimes a mask (representing what's inside the bbox) can contain multiple segments
     # that are disconnected, so remove those excess areas.
-    largest_masks = []
+    cleaned_masks = []
 
     for mask in masks:
-        # Do a little clean up first
+        # Do a little cleanup first
         mask = cv2.erode(mask, None, iterations=4)
         mask = cv2.dilate(mask, None, iterations=2)
-        # Create an empty mask
-        largest_mask = np.zeros_like(mask, dtype=np.uint8)
-        # Find contours in the mask
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # Find the largest contour
-        largest_contour = max(contours, key=cv2.contourArea)
-        # Fill in the mask
-        cv2.drawContours(largest_mask, [largest_contour], 0, 255, thickness=cv2.FILLED)
-        # Add to list
-        largest_masks.append(largest_mask)
+        cleaned_masks.append(mask)
 
-    # Next, see if there's an intersection between any two masks. If there is
-    # calculate the intersection, and give it to the smaller mask, removing it
-    # from the larger mask
-
-    for i in range(len(largest_masks)):
-        for j in range(len(largest_masks)):
-            # If it's the same mask continue
-            if i == j:
-                continue
-
-            # The mask in the outer, and in loop
-            mask_1 = largest_masks[i].copy()
-            mask_2 = largest_masks[j].copy()
-
-            # Perform bitwise AND operation to get the intersection
-            intersection_mask = cv2.bitwise_and(mask_1, mask_2)
-
-            if np.any(intersection_mask):
-                # Give the intersection to the smaller polygon by updating
-                # the original mask in the list, and leave the other one as-is
-                if mask_1.sum() > mask_2.sum():
-                    largest_masks[i] = mask_1 & ~intersection_mask
-                else:
-                    largest_masks[j] = mask_2 & ~intersection_mask
-
-    # Finally, get the contours for each of the masks
+    # Then, get the contours for each of the masks
     polygons = []
 
-    for mask in largest_masks:
+    for mask in cleaned_masks:
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         # Find the largest contour
         largest_contour = max(contours, key=cv2.contourArea)
@@ -165,7 +97,7 @@ def polygons_to_points(polygons, image):
     return normalized_polygons
 
 
-def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
+def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, smol=True, debug=False):
     """
 
     :param token:
@@ -175,6 +107,8 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
     :param end_at:
     :param conf:
     :param iou:
+    :param smol:
+    :param debug:
     :return:
     """
     # ------------------------------------------------
@@ -240,6 +174,9 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
     rendered_frames_dir = f"{data_dir}/Rendered_Frames"
     os.makedirs(rendered_frames_dir, exist_ok=True)
 
+    # Check for CUDA
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+
     # Model location
     model_path = f"best.pt"
 
@@ -247,8 +184,23 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
         raise Exception(f"ERROR: Model weights not found in {root}!")
 
     try:
-        # Load it up
-        model = YOLO(model_path)
+
+        # If using SAHI, initialize model differently
+        if smol:
+            # Load the YOLO model as auto-detection
+            yolo_model = AutoDetectionModel.from_pretrained(
+                model_type='yolov8',
+                model_path=model_path,
+                confidence_threshold=conf,
+                device=device
+            )
+            # Load the SAM model
+            sam_model = SAM('sam_l.pt')
+
+        else:
+            # Normal YOLO model convention
+            yolo_model = YOLO(model_path)
+
         print(f"NOTE: Successfully loaded weights {model_path}")
 
         # Create the annotators for segmentation
@@ -265,21 +217,12 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
     try:
         # Get the media, attributes
         media = api.get_media(media_id)
-        width = media.width
-        height = media.height
 
         if not 0 < start_at < media.num_frames or start_at > end_at:
-            raise Exception(f"ERROR: Start at frame is invalid")
+            raise Exception(f"ERROR: Start frame is invalid")
 
         if not 0 < end_at < media.num_frames or end_at < start_at:
-            raise Exception(f"ERROR: End at frame is invalid")
-
-        # Ensure both values are divisible by 32
-        height = height // 32 * 32
-        width = width // 32 * 32
-
-        # Image size (passed in model)
-        imgsz = [height, width]
+            raise Exception(f"ERROR: End frame is invalid")
 
         # Get a list of frames to make predictions
         frames = np.arange(start_at, end_at + 1).tolist()
@@ -289,6 +232,8 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
 
         print(f"NOTE: Downloading {len(frames)} frames, "
               f"starting at {start_at} through {end_at} for {media.name}...")
+
+        frame_paths = []
 
         # Setup multithreading for downloading / saving frames
         with concurrent.futures.ThreadPoolExecutor(max_workers=11) as executor:
@@ -300,10 +245,15 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
 
             # Get the results, store  for later
             for future in concurrent.futures.as_completed(future_to_frame):
+
                 frame_idx = future_to_frame[future]
+
                 try:
+                    # Get the results, add to list
                     frame_path = future.result()
+                    frame_paths.append(frame_path[1])
                     print(f"NOTE: Frame {frame_path[0]} downloaded to {frame_path[1]}")
+
                 except Exception as e:
                     raise Exception(f"ERROR: Could not download frame {frame_idx}.\n{e}")
 
@@ -317,37 +267,60 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf, iou, debug):
     try:
         # To store normalized predictions
         localizations = []
-
         print("NOTE: Performing inference")
-
-        # Generator for model performing inference
-        results = model(f"{downloaded_frames_dir}",
-                        conf=conf,
-                        iou=iou,
-                        imgsz=imgsz,
-                        half=True,
-                        augment=False,
-                        max_det=2000,
-                        verbose=False,
-                        retina_masks=True,
-                        stream=True)  # generator of Results objects
 
         # Loop through the results
         with sv.ImageSink(target_dir_path=rendered_frames_dir, overwrite=True) as sink:
-            for result in results:
+            for frame_path in frame_paths:
 
-                # Version issue
-                result.obb = None
-
-                # Original frame
-                frame_name = os.path.basename(result.path)
+                # Frame metadata
+                frame_name = os.path.basename(frame_path)
                 frame_id = frame_name.split("_")[-1].split(".")[0]
-                original_frame = result.orig_img
+                original_frame = read_image(frame_path)
 
-                # Convert the results
-                detections = sv.Detections.from_ultralytics(result)
-                # Filter the detections
-                detections = filter_detections(original_frame, detections)
+                if smol:
+                    # Run the frame through the SAHI slicer, then SAM to get prediction
+                    sliced_predictions = get_sliced_prediction(original_frame,
+                                                               yolo_model,
+                                                               overlap_height_ratio=0.75,
+                                                               overlap_width_ratio=0.75,
+                                                               postprocess_class_agnostic=True,
+                                                               postprocess_match_threshold=0.9)
+
+                    # Extract the bounding boxes
+                    bboxes = np.array([_.bbox.to_xyxy() for _ in sliced_predictions.object_prediction_list])
+                    confidences = np.array([_.score.value for _ in sliced_predictions.object_prediction_list])
+
+                    # Update results (version issue)
+                    detections = sv.Detections(xyxy=bboxes,
+                                               confidence=confidences,
+                                               class_id=np.full(len(bboxes, ), fill_value=0))
+
+                    # Run the boxes through SAM as prompts
+                    masks = sam_model(original_frame, bboxes=bboxes, show=False)[0]
+                    masks = masks.masks.data.cpu().numpy()
+                    detections.mask = masks
+
+                else:
+                    # Run the frame through the YOLO model to get predictions
+                    result = yolo_model(original_frame,
+                                        conf=conf,
+                                        iou=iou,
+                                        half=True,
+                                        augment=False,
+                                        max_det=2000,
+                                        verbose=False,
+                                        retina_masks=True,
+                                        show=False)[0]
+
+                    # Version issues
+                    result.obb = None
+
+                    # Convert the results
+                    detections = sv.Detections.from_ultralytics(result)
+
+                # Use NMS
+                detections = detections.with_nms(iou, class_agnostic=True)
 
                 # Get the masks of the detections
                 masks = detections.mask.astype(np.uint8)
@@ -415,6 +388,7 @@ def main():
         end_at = os.getenv("END_AT")
         conf = os.getenv("CONFIDENCE")
         iou = os.getenv("IOU")
+        smol = os.getenv("SMOL")
         debug = os.getenv("DEBUG")
 
         # Do checks: if empty, exit early
@@ -422,8 +396,10 @@ def main():
             raise Exception("ERROR: Missing parameter value(s)!")
 
         # If the user didn't provide, use default values
-        conf = conf if conf else 0.1
-        iou = iou if iou else 0.1
+        conf = conf if conf else 0.5
+        iou = iou if iou else 0.7
+        smol = smol if smol else False
+        debug = debug if type(debug) == bool else False
 
         algorithm(token=str(token),
                   project_id=str(project_id),
@@ -432,6 +408,7 @@ def main():
                   end_at=int(end_at),
                   conf=float(conf),
                   iou=float(iou),
+                  smol=bool(smol),
                   debug=debug)
 
         print("Done.")

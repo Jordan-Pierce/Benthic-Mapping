@@ -96,7 +96,7 @@ if __name__ == '__main__':
         task = "segment"
 
     # Number of training epochs
-    num_epochs = 20
+    num_epochs = 250
 
     # ----------------------
     # Dataset Creation
@@ -145,11 +145,11 @@ if __name__ == '__main__':
                                  device=0,
                                  half=True,
                                  epochs=num_epochs,
-                                 patience=int(num_epochs * .3),
-                                 batch=16,
+                                 patience=10,
+                                 batch=4,
                                  project=run_dir,
                                  name=run_name,
-                                 save_period=4,
+                                 save_period=5,
                                  plots=True,
                                  single_cls=True)
     print("Done.")

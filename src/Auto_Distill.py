@@ -12,6 +12,7 @@ from autodistill import helpers
 from autodistill.detection import CaptionOntology
 from autodistill_grounded_sam import GroundedSAM
 from autodistill_grounding_dino import GroundingDINO
+from autodistill_yolov8 import YOLOv8Base
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -146,6 +147,7 @@ def filter_detections(image, annotations, area_thresh=1.0, conf_thresh=0.0):
     boxes = annotations.xyxy
     num_boxes = len(boxes)
 
+    # Filter out larger boxes that contain smaller boxes
     is_large_box = np.zeros(num_boxes, dtype=bool)
 
     for i, box1 in enumerate(boxes):
@@ -159,8 +161,8 @@ def filter_detections(image, annotations, area_thresh=1.0, conf_thresh=0.0):
             (boxes[:, 3] <= y2)
         )
 
-        # Check if box1 is a large box containing at least two smaller boxes
-        is_large_box[i] = contained_count >= 3
+        # Check if box1 is a large box containing at least N smaller boxes
+        is_large_box[i] = contained_count >= 5
 
     annotations = annotations[~is_large_box]
 
@@ -311,7 +313,7 @@ if __name__ == "__main__":
 
     # Currently we're creating single-class datasets, and
     # merging them together right before training the model
-    dataset_name = "Rock"
+    dataset_name = "Rock2"
 
     # The directory for the current dataset being created
     current_data_dir = f"{training_data_dir}/{dataset_name}"
@@ -344,14 +346,18 @@ if __name__ == "__main__":
         "big rock": "rock",
         "fuzzy rock": "rock",
         "smooth rock": "rock",
+        "pebble": "rock",
+        "cobble": "rock",
+        "stone": "rock",
+        "boulder": "rock",
     })
 
     # Polygon's size as a ratio of the image
     # Large polygons shouldn't be included.
-    area_thresh = 1.0
+    area_thresh = 0.9
 
     # Non-maximum suppression threshold
-    nms_thresh = 0.1
+    nms_thresh = 0.5
 
     # Extract every N frames
     frame_stride = 15
@@ -425,7 +431,7 @@ if __name__ == "__main__":
                 # Filter based on area and confidence (removes large and unconfident)
                 annotations = filter_detections(image, annotations, area_thresh)
 
-                # Filter based on NMS (removes all the duplicates, faster than with_nms)
+                # Filter boxes with NMS (removes all the duplicates, faster than with_nms)
                 predictions = np.column_stack((annotations.xyxy, annotations.confidence))
                 indices = sv.detection.utils.box_non_max_suppression(predictions, nms_thresh)
                 annotations = annotations[indices]

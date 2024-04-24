@@ -12,6 +12,8 @@ scikit_image
 tator
 ffmpeg-python
 supervision
+ultralytics
+sahi
 autodistill
 autodistill-grounded-sam
 autodistill_grounding_dino

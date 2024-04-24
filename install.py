@@ -110,7 +110,8 @@ install_requires = [
     'tator',
 
     # Don't mess with these
-    'roboflow',
+    'ultralytics',
+    'sahi'
     'supervision',
     'autodistill',
     'autodistill-grounded-sam',

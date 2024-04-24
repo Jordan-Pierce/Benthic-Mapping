@@ -2,8 +2,17 @@ import os.path
 import argparse
 from tqdm import tqdm
 
+import numpy as np
+
+import torch
 import supervision as sv
+
+from ultralytics import SAM
 from ultralytics import YOLO
+from ultralytics.engine.results import Results
+
+from sahi import AutoDetectionModel
+from sahi.predict import get_sliced_prediction
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -11,7 +20,7 @@ from ultralytics import YOLO
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-def process_video(source_weights, source_video, output_dir, task, start_at, end_at, conf=.3, iou=.7, show=False):
+def inference(source_weights, source_video, output_dir, task, start_at, end_at, conf=.5, iou=.7, smol=True, show=False):
     """
 
     :param source_weights:
@@ -22,6 +31,7 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
     :param end_at:
     :param conf:
     :param iou:
+    :param smol:
     :param show:
     :return:
     """
@@ -30,8 +40,29 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
     # Create the target directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
-    # Load the model
-    model = YOLO(source_weights)
+    # Check for CUDA
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+
+    try:
+
+        # If using SAHI, initialize model differently
+        if smol:
+            # Load the YOLO model as auto-detection
+            yolo_model = AutoDetectionModel.from_pretrained(
+                model_type='yolov8',
+                model_path=source_weights,
+                confidence_threshold=conf,
+                device=device
+            )
+            # Load the SAM model
+            sam_model = SAM('sam_l.pt')
+
+        else:
+            # Normal YOLO model convention
+            yolo_model = YOLO(source_weights)
+
+    except Exception as e:
+        raise Exception(f"ERROR: Could not load models;\n{e}")
 
     if task == 'detect':
         # Load the tracker
@@ -77,22 +108,53 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
             # Only make predictions within range
             if start_at < f_idx < end_at:
 
-                # Run the frame through the model and make predictions
-                result = model(frame,
-                               conf=conf,
-                               iou=iou,
-                               half=True,
-                               augment=augment,
-                               max_det=2000,
-                               verbose=False,
-                               retina_masks=retina_masks,
-                               show=show)[0]
+                # Make a copy
+                orig_img = frame.copy()
 
-                # Version issues
-                result.obb = None
+                if smol:
+                    # Run the frame through the SAHI slicer, then SAM to get prediction
+                    sliced_predictions = get_sliced_prediction(frame,
+                                                               yolo_model,
+                                                               overlap_height_ratio=0.75,
+                                                               overlap_width_ratio=0.75,
+                                                               postprocess_class_agnostic=True,
+                                                               postprocess_match_threshold=0.9)
 
-                # Convert the results
-                detections = sv.Detections.from_ultralytics(result)
+                    # Extract the bounding boxes
+                    bboxes = np.array([_.bbox.to_xyxy() for _ in sliced_predictions.object_prediction_list])
+                    confidences = np.array([_.score.value for _ in sliced_predictions.object_prediction_list])
+
+                    # Update results (version issue)
+                    detections = sv.Detections(xyxy=bboxes,
+                                               confidence=confidences,
+                                               class_id=np.full(len(bboxes, ), fill_value=0))
+
+                    if task == 'segment':
+                        # Run the boxes through SAM as prompts
+                        masks = sam_model(frame, bboxes=bboxes, show=False)[0]
+                        masks = masks.masks.data.cpu().numpy()
+                        detections.mask = masks
+
+                else:
+                    # Run the frame through the YOLO model to get predictions
+                    result = yolo_model(frame,
+                                        conf=conf,
+                                        iou=iou,
+                                        half=True,
+                                        augment=augment,
+                                        max_det=2000,
+                                        verbose=False,
+                                        retina_masks=retina_masks,
+                                        show=False)[0]
+
+                    # Version issues
+                    result.obb = None
+
+                    # Convert the results
+                    detections = sv.Detections.from_ultralytics(result)
+
+                # Use NMS
+                detections = detections.with_nms(iou, class_agnostic=True)
 
                 if task == 'detect':
                     # Track the detections
@@ -100,23 +162,26 @@ def process_video(source_weights, source_video, output_dir, task, start_at, end_
                     labels = [f"#{tracker_id}" for tracker_id in detections.tracker_id]
 
                     # Create an annotated version of the frame (boxes)
-                    annotated_frame = box_annotator.annotate(scene=frame.copy(), detections=detections)
-                    annotated_frame = labeler.annotate(scene=annotated_frame, detections=detections, labels=labels)
+                    frame = box_annotator.annotate(scene=frame, detections=detections)
+                    frame = labeler.annotate(scene=frame, detections=detections, labels=labels)
 
                 else:
                     # Create an annotated version of the frame (masks and boxes)
-                    annotated_frame = mask_annotator.annotate(scene=frame.copy(), detections=detections)
-                    annotated_frame = box_annotator.annotate(scene=annotated_frame.copy(), detections=detections)
+                    frame = mask_annotator.annotate(scene=frame, detections=detections)
+                    frame = box_annotator.annotate(scene=frame, detections=detections)
 
                 # Write the frame to the video
-                sink.write_frame(frame=annotated_frame)
+                sink.write_frame(frame=frame)
 
-            else:
-                # Write the original frame, without detections
-                sink.write_frame(frame)
+                if show:
+                    Results(names={}, path="", orig_img=frame).show()
 
             # Increase frame count
             f_idx += 1
+
+            # Break early as needed
+            if f_idx >= end_at:
+                break
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -164,15 +229,20 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--conf",
-        default=0.05,
+        default=0.5,
         help="Confidence threshold for the model",
         type=float,
     )
     parser.add_argument(
         "--iou",
-        default=0.5,
+        default=0.75,
         help="IOU threshold for the model",
         type=float
+    )
+    parser.add_argument(
+        "--smol",
+        action='store_true',
+        help="Uses SAHI to find smaller objects (takes longer)",
     )
     parser.add_argument(
         "--show",
@@ -182,7 +252,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    process_video(
+    inference(
         source_weights=args.source_weights,
         source_video=args.source_video,
         output_dir=args.output_dir,
@@ -191,6 +261,6 @@ if __name__ == "__main__":
         end_at=args.end_at,
         conf=args.conf,
         iou=args.iou,
+        smol=args.smol,
         show=args.show
     )
-
