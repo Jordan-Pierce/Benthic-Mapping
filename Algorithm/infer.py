@@ -14,7 +14,6 @@ import supervision as sv
 
 from ultralytics import SAM
 from ultralytics import YOLO
-from ultralytics.engine.results import Results
 
 from sahi import AutoDetectionModel
 from sahi.utils.cv import read_image
@@ -49,28 +48,22 @@ def mask_to_polygons(masks):
     """
 
     """
-    # First, create versions of each mask that only contains the largest segment
-    # Sometimes a mask (representing what's inside the bbox) can contain multiple segments
-    # that are disconnected, so remove those excess areas.
-    cleaned_masks = []
-
-    for mask in masks:
-        # Do a little cleanup first
-        mask = cv2.erode(mask, None, iterations=4)
-        mask = cv2.dilate(mask, None, iterations=2)
-        cleaned_masks.append(mask)
-
-    # Then, get the contours for each of the masks
+    # Get the contours for each of the masks
     polygons = []
 
-    for mask in cleaned_masks:
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # Find the largest contour
-        largest_contour = max(contours, key=cv2.contourArea)
-        epsilon_length = 0.0025 * cv2.arcLength(largest_contour, True)
-        largest_contour = cv2.approxPolyDP(largest_contour, epsilon_length, True)
-        # Convert the contour to a numpy array and append to the list
-        polygons.append(largest_contour.squeeze())
+    for mask in masks:
+
+        try:
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # Find the largest contour
+            largest_contour = max(contours, key=cv2.contourArea)
+            epsilon_length = 0.0025 * cv2.arcLength(largest_contour, True)
+            largest_contour = cv2.approxPolyDP(largest_contour, epsilon_length, True)
+            # Convert the contour to a numpy array and append to the list
+            polygons.append(largest_contour.squeeze())
+
+        except Exception as e:
+            pass
 
     return polygons
 
@@ -95,6 +88,33 @@ def polygons_to_points(polygons, image):
         normalized_polygons.append(normalized_points)
 
     return normalized_polygons
+
+
+def notify_user(api, project_id, media_id, start_at, end_at):
+    """
+
+    """
+    try:
+        # Get the url to the start frame
+        url = f"https://cloud.tator.io/{project_id}/annotation/{media_id}?frame={start_at}&version={545}"
+
+        # Access user's email through api
+        user_email = api.whoami().email
+        subject = "Your images have been annotated!"
+        text = f"Finished Running YOLOv8 on frames {start_at} - {end_at} for Media {media_id}!\n\n\n{url}"
+
+        # Make email spec
+        email_spec = tator.models.EmailSpec(recipients=[user_email],
+                                            subject=subject,
+                                            text=text)
+
+        # Send it
+        api.send_email(project=project_id, email_spec=email_spec)
+        print("NOTE: Notified user")
+
+    except Exception:
+        # Fail silently
+        pass
 
 
 def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, smol=True, debug=False):
@@ -282,8 +302,8 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, sm
                     # Run the frame through the SAHI slicer, then SAM to get prediction
                     sliced_predictions = get_sliced_prediction(original_frame,
                                                                yolo_model,
-                                                               overlap_height_ratio=0.75,
-                                                               overlap_width_ratio=0.75,
+                                                               overlap_height_ratio=0.65,
+                                                               overlap_width_ratio=0.65,
                                                                postprocess_class_agnostic=True,
                                                                postprocess_match_threshold=0.9)
 
@@ -306,7 +326,7 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, sm
                     result = yolo_model(original_frame,
                                         conf=conf,
                                         iou=iou,
-                                        half=True,
+                                        half=False,
                                         augment=False,
                                         max_det=2000,
                                         verbose=False,
@@ -355,12 +375,15 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, sm
         # Upload to TATOR
         # ------------------------------------------------
 
-        print("NOTE: Uploading predictions to TATOR")
+        print(f"NOTE: Uploading {len(localizations)} predictions to TATOR")
         # Total localizations uploaded
         num_uploaded = 0
         # Loop through and upload to TATOR
         for response in tator.util.chunked_create(api.create_localization_list, project_id, body=localizations):
             num_uploaded += 1
+
+        # Notify the user
+        notify_user(api, project_id, media_id, start_at, end_at)
 
     except Exception as e:
         print(f"ERROR: {e}")
