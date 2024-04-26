@@ -97,6 +97,7 @@ except Exception as e:
 install_requires = [
     'wheel',
 
+    'tqdm',
     'numpy',
     'pandas',
     'scipy',

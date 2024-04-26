@@ -324,6 +324,7 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, sm
                 else:
                     # Run the frame through the YOLO model to get predictions
                     result = yolo_model(original_frame,
+                                        imgsz=1280,
                                         conf=conf,
                                         iou=iou,
                                         half=False,
@@ -433,6 +434,7 @@ def main():
                   iou=float(iou),
                   smol=bool(smol),
                   debug=debug)
+
 
         print("Done.")
 

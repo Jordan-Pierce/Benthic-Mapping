@@ -12,7 +12,6 @@ from autodistill import helpers
 from autodistill.detection import CaptionOntology
 from autodistill_grounded_sam import GroundedSAM
 from autodistill_grounding_dino import GroundingDINO
-from autodistill_yolov8 import YOLOv8Base
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -294,7 +293,7 @@ if __name__ == "__main__":
     # Create the directory
     os.makedirs(temporary_frames_dir, exist_ok=True)
 
-    # Auto labeled data; this is also temporary until being filtered
+    # Auto labeled data; this is also temporary until filtered
     auto_labeled_dir = f"{root}/Auto_Labeled"
 
     # If it exists from last time (exited early) delete
@@ -313,7 +312,7 @@ if __name__ == "__main__":
 
     # Currently we're creating single-class datasets, and
     # merging them together right before training the model
-    dataset_name = "Rock2"
+    dataset_name = "Rock"
 
     # The directory for the current dataset being created
     current_data_dir = f"{training_data_dir}/{dataset_name}"
@@ -416,9 +415,6 @@ if __name__ == "__main__":
                                        output_folder=auto_labeled_dir,
                                        record_confidence=True)
 
-            # Delete the temporary copies
-            shutil.rmtree(temporary_image_folder)
-
             # Filter the dataset
             image_names = list(dataset.images.keys())
 
@@ -441,7 +437,7 @@ if __name__ == "__main__":
                 dataset.annotations[image_name].class_id = np.zeros_like(class_id)
 
             # Change the dataset classes
-            dataset.classes = [f'{dataset_name}']
+            dataset.classes = list(set(dataset.classes))
 
             if SAVE_LABELS:
                 # Save the filtered dataset (this is used for training)
@@ -456,15 +452,18 @@ if __name__ == "__main__":
                            include_boxes=include_boxes,
                            include_masks=include_masks)
 
-        if SAVE_LABELS:
-            # Split the filtered dataset into training / valid
-            helpers.split_data(current_data_dir, record_confidence=True)
+    if SAVE_LABELS:
+        # Split the filtered dataset into training / valid
+        helpers.split_data(current_data_dir, record_confidence=True)
 
-            # -----------------------------------------
-            # Manually delete any images as needed!
-            # -----------------------------------------
-            response = input(f"Delete any bad labeled frames from {os.path.basename(current_data_dir)} now...")
-            # Remove images and labels from train/valid if they were deleted from rendered
-            remove_bad_data(current_data_dir)
+        # -----------------------------------------
+        # Manually delete any images as needed!
+        # -----------------------------------------
+        response = input(f"Delete any bad labeled frames from {os.path.basename(current_data_dir)} now...")
+        # Remove images and labels from train/valid if they were deleted from rendered
+        remove_bad_data(current_data_dir)
+
+    # Delete the temporary copies
+    shutil.rmtree(temporary_frames_dir)
 
     print("Done.")

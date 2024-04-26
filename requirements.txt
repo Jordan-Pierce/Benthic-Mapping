@@ -14,6 +14,7 @@ ffmpeg-python
 supervision
 ultralytics
 sahi
+tqdm
 autodistill
 autodistill-grounded-sam
 autodistill_grounding_dino

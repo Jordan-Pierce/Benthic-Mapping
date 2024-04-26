@@ -96,7 +96,7 @@ if __name__ == '__main__':
         task = "segment"
 
     # Number of training epochs
-    num_epochs = 250
+    num_epochs = 200
 
     # ----------------------
     # Dataset Creation
@@ -110,11 +110,14 @@ if __name__ == '__main__':
 
     for dataset_folder in dataset_folders:
 
+        # Check to see if you want to include this dataset
+        user_input = input(f"Include? (Y/n): {os.path.basename(dataset_folder)}")
+
+        if user_input.lower() == 'n':
+            continue
+
         # Get the folder for the dataset
         dataset_folder = f"{training_data_dir}/{dataset_folder}"
-
-        if not os.path.isdir(dataset_folder):
-            continue
 
         # Remove images and labels from train/valid if they were deleted from rendered
         remove_bad_data(dataset_folder)
