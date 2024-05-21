@@ -311,15 +311,21 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, sm
                     bboxes = np.array([_.bbox.to_xyxy() for _ in sliced_predictions.object_prediction_list])
                     confidences = np.array([_.score.value for _ in sliced_predictions.object_prediction_list])
 
-                    # Update results (version issue)
-                    detections = sv.Detections(xyxy=bboxes,
-                                               confidence=confidences,
-                                               class_id=np.full(len(bboxes, ), fill_value=0))
+                    if len(bboxes):
 
-                    # Run the boxes through SAM as prompts
-                    masks = sam_model(original_frame, bboxes=bboxes, show=False)[0]
-                    masks = masks.masks.data.cpu().numpy()
-                    detections.mask = masks
+                        # Update results (version issue)
+                        detections = sv.Detections(xyxy=bboxes,
+                                                   confidence=confidences,
+                                                   class_id=np.full(len(bboxes, ), fill_value=0))
+
+                        # Run the boxes through SAM as prompts
+                        masks = sam_model(original_frame, bboxes=bboxes, show=False)[0]
+                        masks = masks.masks.data.cpu().numpy()
+                        detections.mask = masks
+
+                    else:
+                        # If there are no detections, make dummy
+                        detections = sv.Detections.empty()
 
                 else:
                     # Run the frame through the YOLO model to get predictions
@@ -434,7 +440,6 @@ def main():
                   iou=float(iou),
                   smol=bool(smol),
                   debug=debug)
-
 
         print("Done.")
 

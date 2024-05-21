@@ -47,14 +47,14 @@ if __name__ == "__main__":
     os.makedirs(training_data_dir, exist_ok=True)
 
     # Provide the weights to the previously best trained YOLO model
-    source_weights = "best.pt"
+    source_weights = "B:\\Benthic-Mapping\\Algorithm\\best.pt"
 
     # ------------------------------------------------------
     # UPDATE THIS AND ONLY THIS
 
     # Currently we're creating single-class datasets, and
     # merging them together right before training the model
-    dataset_name = "Rock_Relabeled_2"
+    dataset_name = "Rock_Relabeled"
 
     # The directory for the current dataset being created
     current_data_dir = f"{training_data_dir}/{dataset_name}"

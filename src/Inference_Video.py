@@ -108,9 +108,6 @@ def inference(source_weights, source_video, output_dir, task, start_at, end_at, 
             # Only make predictions within range
             if start_at < f_idx < end_at:
 
-                # Make a copy
-                orig_img = frame.copy()
-
                 if smol:
                     # Run the frame through the SAHI slicer, then SAM to get prediction
                     sliced_predictions = get_sliced_prediction(frame,
