@@ -47,14 +47,14 @@ if __name__ == "__main__":
     os.makedirs(training_data_dir, exist_ok=True)
 
     # Provide the weights to the previously best trained YOLO model
-    source_weights = "B:\\Benthic-Mapping\\Algorithm\\best.pt"
+    source_weights = "B:\\Benthic-Mapping\\Data\\Runs\\2024-04-27_12-50-10_segment_yolov8s-seg\\weights\\best.pt"
 
     # ------------------------------------------------------
     # UPDATE THIS AND ONLY THIS
 
     # Currently we're creating single-class datasets, and
     # merging them together right before training the model
-    dataset_name = "Rock_Relabeled"
+    dataset_name = "Rock_Relabeled_2"
 
     # The directory for the current dataset being created
     current_data_dir = f"{training_data_dir}/{dataset_name}"
@@ -90,8 +90,8 @@ if __name__ == "__main__":
         include_masks = True
 
     # Non-maximum suppression threshold
-    conf = 0.25
-    iou = 0.7
+    conf = 0.50
+    iou = 0.50
 
     # Extract every N frames
     frame_stride = 15

@@ -280,8 +280,8 @@ if __name__ == "__main__":
     os.makedirs(converted_video_dir, exist_ok=True)
 
     # Extracted frames from Converted videos go here
-    extracted_frames_dir = f"{root}/Extracted_Frames"
-    os.makedirs(extracted_frames_dir, exist_ok=True)
+    selected_frames_root = f"{root}/Selected_Frames"
+    os.makedirs(selected_frames_root, exist_ok=True)
 
     # Frames are batched (RAM) and temporarily placed here
     temporary_frames_dir = f"{root}/Temporary_Frames"
@@ -312,43 +312,55 @@ if __name__ == "__main__":
 
     # Currently we're creating single-class datasets, and
     # merging them together right before training the model
-    dataset_name = "Rock"
+    dataset_name = "Not_Rock"
 
-    # The directory for the current dataset being created
+    # Specify where to place the selected frames for this dataset
+    selected_frames_dir = f"{selected_frames_root}/{dataset_name}"
+    os.makedirs(selected_frames_dir, exist_ok=True)
+
+    # Specify the directory where the current dataset will be saved
     current_data_dir = f"{training_data_dir}/{dataset_name}"
     os.makedirs(current_data_dir, exist_ok=True)
 
     # Directory contains visuals of images and labels (for QA/QC)
     rendered_data_dir = f"{current_data_dir}/rendered"
+    os.makedirs(rendered_data_dir, exist_ok=True)
+
     # ------------------------------------------------------
     # Modify each of these as needed!
 
-    # Define the workflow
+    # Extract frames from the converted videos
     EXTRACT_FRAMES = False
-    CREATE_LABELS = True
+    frame_stride = 15
 
-    # Debug
+    # Create pos / neg labels using foundational model
+    CREATE_POS_LABELS = False
+    CREATE_NEG_LABELS = True
+    assert CREATE_POS_LABELS != CREATE_NEG_LABELS
+
+    # Model threshold value
+    model_thresh = 0.05 if CREATE_POS_LABELS else 1.01
+
+    # Save labels made by the foundational model
     SAVE_LABELS = True
 
     # CV Tasks
-    DETECTION = False
-    SEGMENTATION = True
-
-    # There can only be one
+    DETECTION = True
+    SEGMENTATION = False
     assert DETECTION != SEGMENTATION
 
     # Set up the labeling ontology
     ontology = CaptionOntology({
         "rock": "rock",
-        "tiny rock": "rock",
-        "small rock": "rock",
-        "big rock": "rock",
-        "fuzzy rock": "rock",
-        "smooth rock": "rock",
-        "pebble": "rock",
-        "cobble": "rock",
-        "stone": "rock",
-        "boulder": "rock",
+        # "tiny rock": "rock",
+        # "small rock": "rock",
+        # "big rock": "rock",
+        # "fuzzy rock": "rock",
+        # "smooth rock": "rock",
+        # "pebble": "rock",
+        # "cobble": "rock",
+        # "stone": "rock",
+        # "boulder": "rock",
     })
 
     # Polygon's size as a ratio of the image
@@ -357,9 +369,6 @@ if __name__ == "__main__":
 
     # Non-maximum suppression threshold
     nms_thresh = 0.5
-
-    # Extract every N frames
-    frame_stride = 15
 
     # ---------------------------------------
     # Workflow
@@ -370,29 +379,29 @@ if __name__ == "__main__":
         video_paths = glob.glob(f"{converted_video_dir}/*.mp4")
         print("Converted Videos Found: ", len(video_paths))
         # Extract frames from training video (if needed)
-        extract_frames(video_paths, extracted_frames_dir, frame_stride=frame_stride)
+        extract_frames(video_paths, selected_frames_dir, frame_stride=frame_stride)
 
         # -----------------------------------------
         # Manually delete any images as needed!
         # -----------------------------------------
-        response = input(f"Delete any bad frames from {os.path.basename(extracted_frames_dir)} now...")
+        response = input(f"Delete any bad frames from {os.path.basename(selected_frames_dir)} now...")
 
         # Get a count of the images extracted from all videos
-        image_paths = sv.list_files_with_extensions(directory=extracted_frames_dir, extensions=["png", "jpg", "jpg"])
+        image_paths = sv.list_files_with_extensions(directory=selected_frames_dir, extensions=["png", "jpg", "jpg"])
         print("Extracted Images Found: ", len(image_paths))
 
-    if CREATE_LABELS:
+    if CREATE_POS_LABELS or CREATE_NEG_LABELS:
         # Make copies of the extracted frames, make in batches of N
         # This has to be done because the auto labeler is RAM heavy
-        batch_and_copy_images(temporary_frames_dir, extracted_frames_dir)
+        batch_and_copy_images(temporary_frames_dir, selected_frames_dir)
         temporary_image_folders = glob.glob(f"{temporary_frames_dir}/images_*")
         print("Batch Folders Found: ", len(temporary_image_folders))
 
         if DETECTION:
             # Initialize the foundational base model, set the thresholds
             base_model = GroundingDINO(ontology=ontology,
-                                       box_threshold=0.05,
-                                       text_threshold=0.05)
+                                       box_threshold=model_thresh,
+                                       text_threshold=model_thresh)
             # For rendering
             include_boxes = True
             include_masks = False
@@ -400,8 +409,8 @@ if __name__ == "__main__":
         else:
             # Initialize the foundational base model, set the thresholds
             base_model = GroundedSAM(ontology=ontology,
-                                     box_threshold=0.05,
-                                     text_threshold=0.05)
+                                     box_threshold=model_thresh,
+                                     text_threshold=model_thresh)
             # For rendering
             include_boxes = True
             include_masks = True

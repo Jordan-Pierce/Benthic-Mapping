@@ -121,16 +121,22 @@ def inference(source_weights, source_video, output_dir, task, start_at, end_at, 
                     bboxes = np.array([_.bbox.to_xyxy() for _ in sliced_predictions.object_prediction_list])
                     confidences = np.array([_.score.value for _ in sliced_predictions.object_prediction_list])
 
-                    # Update results (version issue)
-                    detections = sv.Detections(xyxy=bboxes,
-                                               confidence=confidences,
-                                               class_id=np.full(len(bboxes, ), fill_value=0))
+                    if len(bboxes):
 
-                    if task == 'segment':
-                        # Run the boxes through SAM as prompts
-                        masks = sam_model(frame, bboxes=bboxes, show=False)[0]
-                        masks = masks.masks.data.cpu().numpy()
-                        detections.mask = masks
+                        # Update results (version issue)
+                        detections = sv.Detections(xyxy=bboxes,
+                                                   confidence=confidences,
+                                                   class_id=np.full(len(bboxes, ), fill_value=0))
+
+                        if task == 'segment':
+                            # Run the boxes through SAM as prompts
+                            masks = sam_model(frame, bboxes=bboxes, show=False)[0]
+                            masks = masks.masks.data.cpu().numpy()
+                            detections.mask = masks
+
+                    else:
+                        # If there are no detections, make dummy
+                        detections = sv.Detections.empty()
 
                 else:
                     # Run the frame through the YOLO model to get predictions

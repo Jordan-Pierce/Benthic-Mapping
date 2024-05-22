@@ -96,7 +96,7 @@ if __name__ == '__main__':
         task = "segment"
 
     # Number of training epochs
-    num_epochs = 200
+    num_epochs = 50
 
     # ----------------------
     # Dataset Creation
@@ -110,20 +110,27 @@ if __name__ == '__main__':
 
     for dataset_folder in dataset_folders:
 
+        # Get the full path of the folder
+        full_path = os.path.join(training_data_dir, dataset_folder)
+
+        if not os.path.isdir(full_path):
+            continue
+
         # Check to see if you want to include this dataset
-        user_input = input(f"Include? (Y/n): {os.path.basename(dataset_folder)}")
+        user_input = input(f"Include? (Y/n) - {os.path.basename(dataset_folder)}: ")
 
         if user_input.lower() == 'n':
             continue
 
-        # Get the folder for the dataset
-        dataset_folder = f"{training_data_dir}/{dataset_folder}"
-
         # Remove images and labels from train/valid if they were deleted from rendered
-        remove_bad_data(dataset_folder)
+        remove_bad_data(full_path)
         # Get the YAML file for the dataset
-        yaml_file = f"{dataset_folder}/data.yaml"
-        assert os.path.exists(yaml_file)
+        yaml_file = os.path.join(full_path, 'data.yaml')
+
+        if not os.path.exists(yaml_file):
+            print(f"Warning: {yaml_file} does not exist.")
+            continue
+
         # Add to the list
         yaml_files.append(yaml_file)
 
@@ -132,9 +139,9 @@ if __name__ == '__main__':
 
     # Get weights based on task
     if DETECTION:
-        weights = "yolov9c.pt"
+        weights = "yolov8s.pt"
     else:
-        weights = "yolov9c-seg.pt"
+        weights = "yolov8s-seg.pt"
 
     # Name of the run
     run_name = f"{get_now()}_{task}_{weights.split('.')[0]}"
