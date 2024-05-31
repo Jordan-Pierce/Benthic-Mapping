@@ -64,18 +64,15 @@ def download_video(api_token, project_id, media_ids):
         print(f"NOTE: Authentication successful for {api.whoami().username}")
 
     except Exception as e:
-        print(f"ERROR: Could not authenticate with provided API Token\n{e}")
-        sys.exit(1)
+        raise Exception(f"ERROR: Could not authenticate with provided API Token\n{e}")
 
     # Project id containing media
     if not project_id:
-        print(f"ERROR: Project ID provided is invalid; please check input")
-        sys.exit(1)
+        raise Exception(f"ERROR: Project ID provided is invalid; please check input")
 
     # List of media
     if not len(media_ids):
-        print(f"ERROR: Medias provided is invalid; please check input")
-        sys.exit(1)
+        raise Exception(f"ERROR: Medias provided is invalid; please check input")
 
     # Get the root data directory (Data); OCD
     root = os.path.dirname(os.path.dirname(os.path.realpath(__file__))) + "\\Data"
@@ -104,8 +101,7 @@ def download_video(api_token, project_id, media_ids):
             print(f"NOTE: Downloading {media.name}...")
 
         except Exception as e:
-            print(f"ERROR: Could not get media from {media_id}")
-            sys.exit(1)
+            raise Exception(f"ERROR: Could not get media from {media_id}")
 
         # Download the video
         for progress in tator.util.download_media(api, media, output_video_path):
@@ -137,7 +133,7 @@ def main():
                         default=os.getenv('TATOR_TOKEN'),
                         help="Tator API Token")
 
-    parser.add_argument("--project_id", type=int, default=70,
+    parser.add_argument("--project_id", type=int, default=155,
                         help="Project ID for desired media")
 
     parser.add_argument("--media_ids", type=int, nargs='+',
@@ -153,7 +149,7 @@ def main():
         print("Done.")
 
     except Exception as e:
-        print(f"ERROR: {e}")
+        print(f"ERROR: Could not finish process.\n{e}")
         print(traceback.format_exc())
 
 

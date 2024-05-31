@@ -26,8 +26,9 @@ from sahi.predict import get_sliced_prediction
 def download_frame(api, media, frame_idx, downloaded_frames_dir):
     """
 
-    :param frame_idx:
+    :param api:
     :param media:
+    :param frame_idx:
     :param downloaded_frames_dir:
     :return:
     """
@@ -47,6 +48,8 @@ def download_frame(api, media, frame_idx, downloaded_frames_dir):
 def mask_to_polygons(masks):
     """
 
+    :param masks:
+    :return:
     """
     # Get the contours for each of the masks
     polygons = []
@@ -71,6 +74,9 @@ def mask_to_polygons(masks):
 def polygons_to_points(polygons, image):
     """
 
+    :param polygons:
+    :param image:
+    :return:
     """
     normalized_polygons = []
 
@@ -93,6 +99,12 @@ def polygons_to_points(polygons, image):
 def notify_user(api, project_id, media_id, start_at, end_at):
     """
 
+    :param api:
+    :param project_id:
+    :param media_id:
+    :param start_at:
+    :param end_at:
+    :return:
     """
     try:
         # Get the url to the start frame
@@ -204,7 +216,6 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, sm
         raise Exception(f"ERROR: Model weights not found in {root}!")
 
     try:
-
         # If using SAHI, initialize model differently
         if smol:
             # Load the YOLO model as auto-detection
@@ -348,7 +359,6 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, sm
 
                 # Use NMS
                 detections = detections.with_nms(iou, class_agnostic=True)
-
                 # Get the masks of the detections
                 masks = detections.mask.astype(np.uint8)
                 # Convert to polygons
@@ -373,7 +383,6 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, sm
                     # Create rendered results
                     annotated_frame = mask_annotator.annotate(scene=original_frame, detections=detections)
                     annotated_frame = box_annotator.annotate(scene=annotated_frame, detections=detections)
-
                     # Save to render folder
                     sink.save_image(image=annotated_frame, image_name=frame_name)
                     print(f"NOTE: Rendered results for {frame_name}")
@@ -383,8 +392,10 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, sm
         # ------------------------------------------------
 
         print(f"NOTE: Uploading {len(localizations)} predictions to TATOR")
+
         # Total localizations uploaded
         num_uploaded = 0
+
         # Loop through and upload to TATOR
         for response in tator.util.chunked_create(api.create_localization_list, project_id, body=localizations):
             num_uploaded += 1
@@ -407,6 +418,7 @@ def algorithm(token, project_id, media_id, start_at, end_at, conf=.5, iou=.7, sm
 def main():
     """
 
+    :return:
     """
     try:
 

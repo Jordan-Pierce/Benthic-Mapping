@@ -26,7 +26,7 @@ RUN python3 -m pip install -U pip
 RUN python3 -m pip install -r requirements.txt
 
 # Copy over the script and model
-COPY Algorithm/ /workdir/
+COPY Algorithms/Rocks /workdir/
 
 # Create a data directory
 RUN mkdir -p /workdir/Data
