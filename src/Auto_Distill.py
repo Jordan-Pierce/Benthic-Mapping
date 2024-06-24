@@ -17,8 +17,6 @@ from autodistill_grounding_dino import GroundingDINO
 # ----------------------------------------------------------------------------------------------------------------------
 # Functions
 # ----------------------------------------------------------------------------------------------------------------------
-
-
 def extract_frames_from_video(video_path, image_dir, start_ratio=.15, end_ratio=.85, frame_stride=15):
     """
 

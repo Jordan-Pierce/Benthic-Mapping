@@ -1,3 +1,4 @@
+import os
 import sys
 import shutil
 import platform
@@ -32,6 +33,16 @@ python_sub_v = int(sys.version_info[1])
 # check python version
 if python_sub_v != 8:
     raise Exception(f"Only Python 3.{python_sub_v} is supported.")
+
+# ---------------------------------------------
+# Requirements file
+# ---------------------------------------------
+requirements_file = 'requirements.txt'
+
+# Check if requirements.txt exists
+if not os.path.isfile(requirements_file):
+    print(f"ERROR: {requirements_file} not found in the current directory.")
+    sys.exit(1)
 
 # ---------------------------------------------
 # MSVC for Windows
@@ -94,39 +105,15 @@ except Exception as e:
 # ----------------------------------------------
 # Other dependencies
 # ----------------------------------------------
-install_requires = [
-    'wheel',
+# Read packages from requirements.txt
+with open(requirements_file, 'r') as file:
+    install_requires = [line.strip() for line in file if line.strip() and not line.startswith('#')]
 
-    'tqdm',
-    'numpy',
-    'pandas',
-    'scipy',
-    'scikit_learn',
-    'matplotlib',
-    'Pillow',
-    'opencv_python',
-    "opencv-contrib-python",
-    'scikit_image',
-
-    'tator',
-
-    # Don't mess with these
-    'ultralytics',
-    'sahi',
-    'supervision',
-    'autodistill',
-    'autodistill-grounded-sam',
-    'autodistill_grounding_dino',
-    'autodistill-yolov8',
-]
-
-# Installing all the other packages
+# Installing all the packages
 for package in install_requires:
-
     try:
         print(f"NOTE: Installing {package}")
         subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-
     except Exception as e:
         print(f"There was an issue installing {package}\n{e}\n")
         print(f"If you're not already, please try using a conda environment with python 3.8")

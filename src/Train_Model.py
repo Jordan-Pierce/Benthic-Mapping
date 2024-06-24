@@ -10,7 +10,6 @@ from Auto_Distill import remove_bad_data
 # ----------------------------------------------------------------------------------------------------------------------
 # Functions
 # ----------------------------------------------------------------------------------------------------------------------
-
 def get_now():
     """
 
@@ -40,10 +39,9 @@ def create_training_yaml(yaml_files, output_dir):
                 data = yaml.safe_load(file)
 
                 # If the class isn't already in the combined list
-                if data['names'] not in combined_data['names']:
+                if not any([c in combined_data['names'] for c in data['names']]):
                     # Combine 'names' field
                     combined_data['names'].extend(data['names'])
-
                     # Combine 'nc' field
                     combined_data['nc'] += data['nc']
 
@@ -84,8 +82,8 @@ if __name__ == '__main__':
     os.makedirs(run_dir, exist_ok=True)
 
     # CV Tasks
-    DETECTION = False
-    SEGMENTATION = True
+    DETECTION = True
+    SEGMENTATION = False
 
     # There can only be one
     assert DETECTION != SEGMENTATION
@@ -96,7 +94,7 @@ if __name__ == '__main__':
         task = "segment"
 
     # Number of training epochs
-    num_epochs = 50
+    num_epochs = 35
 
     # ----------------------
     # Dataset Creation
@@ -123,7 +121,8 @@ if __name__ == '__main__':
             continue
 
         # Remove images and labels from train/valid if they were deleted from rendered
-        remove_bad_data(full_path)
+        # remove_bad_data(full_path)
+
         # Get the YAML file for the dataset
         yaml_file = os.path.join(full_path, 'data.yaml')
 
@@ -139,9 +138,9 @@ if __name__ == '__main__':
 
     # Get weights based on task
     if DETECTION:
-        weights = "yolov8s.pt"
+        weights = "yolov10m.pt"
     else:
-        weights = "yolov8s-seg.pt"
+        weights = "yolov10m-seg.pt"
 
     # Name of the run
     run_name = f"{get_now()}_{task}_{weights.split('.')[0]}"
@@ -156,7 +155,7 @@ if __name__ == '__main__':
                                  half=True,
                                  epochs=num_epochs,
                                  patience=10,
-                                 batch=4,
+                                 batch=8,
                                  project=run_dir,
                                  name=run_name,
                                  save_period=5,

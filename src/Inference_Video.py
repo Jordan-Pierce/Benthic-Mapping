@@ -2,95 +2,110 @@ import os.path
 import argparse
 from tqdm import tqdm
 
-import numpy as np
+import cv2
 
 import torch
 import supervision as sv
-
 from ultralytics import SAM
 from ultralytics import YOLO
-from ultralytics.engine.results import Results
-
-from sahi import AutoDetectionModel
-from sahi.predict import get_sliced_prediction
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Functions
 # ----------------------------------------------------------------------------------------------------------------------
+def calculate_slice_parameters(video_width, video_height, slices_x=2, slices_y=2, overlap_percentage=0.1):
+    """
+
+    :param video_width:
+    :param video_height:
+    :param slices_x:
+    :param slices_y:
+    :param overlap_percentage:
+    :return:
+    """
+    # Calculate base slice dimensions
+    slice_width = video_width // slices_x
+    slice_height = video_height // slices_y
+
+    # Calculate overlap
+    overlap_width = int(slice_width * overlap_percentage)
+    overlap_height = int(slice_height * overlap_percentage)
+
+    # Adjust slice dimensions to include overlap
+    adjusted_slice_width = slice_width + overlap_width
+    adjusted_slice_height = slice_height + overlap_height
+
+    # Calculate overlap ratios
+    overlap_ratio_w = overlap_width / adjusted_slice_width
+    overlap_ratio_h = overlap_height / adjusted_slice_height
+
+    return (adjusted_slice_width, adjusted_slice_height), (overlap_ratio_w, overlap_ratio_h)
 
 
-def inference(source_weights, source_video, output_dir, task, start_at, end_at, conf=.5, iou=.7, smol=True, show=False):
+def inference(source_weights, source_video, output_dir, start_at, end_at, conf, iou, track, smol, show):
     """
 
     :param source_weights:
     :param source_video:
     :param output_dir:
-    :param task:
     :param start_at:
     :param end_at:
     :param conf:
     :param iou:
+    :param track:
     :param smol:
     :param show:
     :return:
     """
+    def slicer_callback(image_slice):
+        """Callback function to perform SAHI using supervision"""
+        # Get the results of the slice
+        results = yolo_model(image_slice)[0]
+        # Convert results to supervision standards
+        results = sv.Detections.from_ultralytics(results)
+
+        return results
+
+    # Check for CUDA
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+
     # Create the target path
     target_video_path = f"{output_dir}/{os.path.basename(source_video)}"
     # Create the target directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
-    # Check for CUDA
-    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-
-    try:
-
-        # If using SAHI, initialize model differently
-        if smol:
-            # Load the YOLO model as auto-detection
-            yolo_model = AutoDetectionModel.from_pretrained(
-                model_type='yolov8',
-                model_path=source_weights,
-                confidence_threshold=conf,
-                device=device
-            )
-            # Load the SAM model
-            sam_model = SAM('sam_l.pt')
-
-        else:
-            # Normal YOLO model convention
-            yolo_model = YOLO(source_weights)
-
-    except Exception as e:
-        raise Exception(f"ERROR: Could not load models;\n{e}")
-
-    if task == 'detect':
-        # Load the tracker
-        tracker = sv.ByteTrack()
-        # Create the annotator for detection
-        box_annotator = sv.BoundingBoxAnnotator()
-        # Adds label to annotation (tracking)
-        labeler = sv.LabelAnnotator()
-        # TTA
-        augment = True
-        # Not applicable
-        retina_masks = False
-
-    elif args.task == 'segment':
-        # Create the annotators for segmentation
-        mask_annotator = sv.MaskAnnotator()
-        box_annotator = sv.BoundingBoxAnnotator()
-        # TTA
-        augment = False
-        # Use high quality masks
-        retina_masks = True
-
-    else:
-        raise Exception("ERROR: Specify --task [detect, segment]")
-
     # Create the video generators
     frame_generator = sv.get_video_frames_generator(source_path=source_video)
     video_info = sv.VideoInfo.from_video_path(video_path=source_video)
+
+    try:  # Load the model weights
+        yolo_model = YOLO(source_weights)
+
+        # Load the SAM model
+        sam_model = SAM('sam_l.pt')
+
+        # Create the annotator for detection
+        box_annotator = sv.BoundingBoxAnnotator()
+        # Create the annotators for segmentation
+        mask_annotator = sv.MaskAnnotator()
+        # Adds label to annotation (tracking)
+        labeler = sv.LabelAnnotator()
+
+    except Exception as e:
+        raise Exception(f"ERROR: Could not load model!\n{e}")
+
+    if track:  # Set up the tracker
+        tracker = sv.ByteTrack()
+
+    if smol:  # Set up the slicer
+        # Get the slicer parameter values (defaults 2 x 2 with 10 % overlap)
+        slice_wh, overlap_ratio_wh = calculate_slice_parameters(video_info.width, video_info.height)
+        # Create the slicer
+        slicer = sv.InferenceSlicer(callback=slicer_callback,
+                                    slice_wh=slice_wh,
+                                    iou_threshold=0.10,
+                                    overlap_ratio_wh=overlap_ratio_wh,
+                                    overlap_filter_strategy=sv.OverlapFilter.NON_MAX_MERGE)
 
     # Where to start and end inference
     if start_at <= 0:
@@ -108,82 +123,61 @@ def inference(source_weights, source_video, output_dir, task, start_at, end_at, 
             # Only make predictions within range
             if start_at < f_idx < end_at:
 
-                if smol:
-                    # Run the frame through the SAHI slicer, then SAM to get prediction
-                    sliced_predictions = get_sliced_prediction(frame,
-                                                               yolo_model,
-                                                               overlap_height_ratio=0.75,
-                                                               overlap_width_ratio=0.75,
-                                                               postprocess_class_agnostic=True,
-                                                               postprocess_match_threshold=0.9)
-
-                    # Extract the bounding boxes
-                    bboxes = np.array([_.bbox.to_xyxy() for _ in sliced_predictions.object_prediction_list])
-                    confidences = np.array([_.score.value for _ in sliced_predictions.object_prediction_list])
-
-                    if len(bboxes):
-
-                        # Update results (version issue)
-                        detections = sv.Detections(xyxy=bboxes,
-                                                   confidence=confidences,
-                                                   class_id=np.full(len(bboxes, ), fill_value=0))
-
-                        if task == 'segment':
-                            # Run the boxes through SAM as prompts
-                            masks = sam_model(frame, bboxes=bboxes, show=False)[0]
-                            masks = masks.masks.data.cpu().numpy()
-                            detections.mask = masks
-
-                    else:
-                        # If there are no detections, make dummy
-                        detections = sv.Detections.empty()
-
-                else:
-                    # Run the frame through the YOLO model to get predictions
-                    result = yolo_model(frame,
-                                        conf=conf,
+                # Perform predictions normally
+                detections = yolo_model(frame,
                                         iou=iou,
-                                        half=True,
-                                        augment=augment,
-                                        max_det=2000,
-                                        verbose=False,
-                                        retina_masks=retina_masks,
-                                        show=False)[0]
+                                        conf=conf,
+                                        device=device)[0]
 
-                    # Version issues
-                    result.obb = None
+                # Convert results to supervision standards
+                detections = sv.Detections.from_ultralytics(detections)
 
-                    # Convert the results
-                    detections = sv.Detections.from_ultralytics(result)
+                if smol:
+                    # Run the frame through the slicer
+                    smol_detections = slicer(frame)
+                    # Merge the results
+                    detections = sv.Detections.merge([detections, smol_detections])
 
-                # Use NMS
+                # Perform NMS, and filter based on confidence scores
                 detections = detections.with_nms(iou, class_agnostic=True)
+                detections = detections[detections.confidence > conf]
+                labels = detections.tracker_id
 
-                if task == 'detect':
-                    # Track the detections
+                if True:
+                    bboxes = detections.xyxy
+                    masks = sam_model(frame, bboxes=bboxes)[0]
+                    masks = masks.masks.data.cpu().numpy()
+                    detections.mask = masks
+
+                if track:  # Track the detections
                     detections = tracker.update_with_detections(detections)
-                    labels = [f"#{tracker_id}" for tracker_id in detections.tracker_id]
+                    labels = detections.tracker_id.astype(str)
 
-                    # Create an annotated version of the frame (boxes)
-                    frame = box_annotator.annotate(scene=frame, detections=detections)
-                    frame = labeler.annotate(scene=frame, detections=detections, labels=labels)
+                # Create an annotated version of the frame
+                frame = mask_annotator.annotate(scene=frame, detections=detections)
+                frame = box_annotator.annotate(scene=frame, detections=detections)
 
-                else:
-                    # Create an annotated version of the frame (masks and boxes)
-                    frame = mask_annotator.annotate(scene=frame, detections=detections)
-                    frame = box_annotator.annotate(scene=frame, detections=detections)
+                # Adds labels or track IDs
+                frame = labeler.annotate(scene=frame,
+                                         detections=detections,
+                                         labels=labels)
 
                 # Write the frame to the video
                 sink.write_frame(frame=frame)
 
                 if show:
-                    Results(names={}, path="", orig_img=frame).show()
+                    cv2.imshow('Predictions', frame)
+
+                    # Allow the frame to show, and update
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
 
             # Increase frame count
             f_idx += 1
 
             # Break early as needed
             if f_idx >= end_at:
+                cv2.destroyAllWindows()
                 break
 
 
@@ -213,12 +207,6 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--task",
-        required=True,
-        help="Task to perform [detect, segment], if applicable",
-        type=str,
-    )
-    parser.add_argument(
         "--start_at",
         default=0,
         help="Frame to start inference",
@@ -232,15 +220,20 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--conf",
-        default=0.5,
+        default=0.65,
         help="Confidence threshold for the model",
         type=float,
     )
     parser.add_argument(
         "--iou",
-        default=0.75,
+        default=0.25,
         help="IOU threshold for the model",
         type=float
+    )
+    parser.add_argument(
+        "--track",
+        action='store_true',
+        help="Uses ByteTrack to track detections",
     )
     parser.add_argument(
         "--smol",
@@ -259,7 +252,7 @@ if __name__ == "__main__":
         source_weights=args.source_weights,
         source_video=args.source_video,
         output_dir=args.output_dir,
-        task=args.task,
+        track=args.track,
         start_at=args.start_at,
         end_at=args.end_at,
         conf=args.conf,
