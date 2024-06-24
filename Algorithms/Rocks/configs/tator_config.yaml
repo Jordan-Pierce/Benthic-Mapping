@@ -1,0 +1,12 @@
+#
+# GLBM Project Tator Configuration File
+#
+
+project: 155
+
+# Media Types
+video_type: 332
+auv_image_type: 331
+
+# Localization Types
+rock_poly_type: 460
