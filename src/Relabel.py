@@ -14,10 +14,10 @@ from Auto_Distill import render_dataset
 from Auto_Distill import remove_bad_data
 from Auto_Distill import batch_and_copy_images
 
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------------------------------------------------------
-
 if __name__ == "__main__":
 
     # Get the root data directory (Data); OCD
@@ -47,14 +47,14 @@ if __name__ == "__main__":
     os.makedirs(training_data_dir, exist_ok=True)
 
     # Provide the weights to the previously best trained YOLO model
-    source_weights = "B:\\Benthic-Mapping\\Data\\Runs\\2024-04-27_12-50-10_segment_yolov8s-seg\\weights\\best.pt"
+    source_weights = "B:\\Benthic-Mapping\\Data\\Runs\\2024-05-31_18-39-21_detect_yolov8s\\weights\\best.pt"
 
     # ------------------------------------------------------
     # UPDATE THIS AND ONLY THIS
 
     # Currently we're creating single-class datasets, and
     # merging them together right before training the model
-    dataset_name = "Rock_Relabeled_2"
+    dataset_name = "Sponge_Relabeled"
 
     # The directory for the current dataset being created
     current_data_dir = f"{training_data_dir}/{dataset_name}"
@@ -90,8 +90,8 @@ if __name__ == "__main__":
         include_masks = True
 
     # Non-maximum suppression threshold
-    conf = 0.50
-    iou = 0.50
+    conf = 0.30
+    iou = 0.1
 
     # Extract every N frames
     frame_stride = 15
@@ -130,10 +130,10 @@ if __name__ == "__main__":
         for temporary_image_folder in temporary_image_folders:
 
             # Create labels for the images in temp folder
-            results = yolo_model.predict(f"{temporary_image_folder}/*.png",
+            results = yolo_model.predict(f"{temporary_image_folder}/*.*",
                                          conf=conf,
                                          iou=iou,
-                                         imgsz=1280,
+                                         # imgsz=1280,
                                          show=False,
                                          show_labels=False,
                                          stream=True)
@@ -195,7 +195,7 @@ if __name__ == "__main__":
         # -----------------------------------------
         response = input(f"Delete any bad labeled frames from {os.path.basename(current_data_dir)} now...")
         # Remove images and labels from train/valid if they were deleted from rendered
-        remove_bad_data(current_data_dir)
+        # remove_bad_data(current_data_dir)
 
     # Delete the temporary copies
     shutil.rmtree(temporary_frames_dir)
