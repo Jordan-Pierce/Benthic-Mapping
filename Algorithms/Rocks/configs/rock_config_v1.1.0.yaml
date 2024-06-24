@@ -1,16 +1,10 @@
-version: 1.1.0
-description: "Rock mask creation using SAM and SAHI"
+version: 1.2.0
+description: "Rock mask creation using YOLO and SAM"
 
 # Model initialization
-model_confidence_threshold: 0.5
-iou_threshold: 0.7
+model_confidence_threshold: 0.65
+iou_threshold: 0.25
 smol: True
-model_type: "yolov8"
+model_type: "yolov10"
 model_path: "/repo/Data/best.pt"
 sam_model_path: "sam_l.pt"
-
-# SAHI parameters
-overlap_height_ratio: 0.65
-overlap_width_ratio: 0.65
-postprocess_class_agnostic: True
-postprocess_match_threshold: 0.9

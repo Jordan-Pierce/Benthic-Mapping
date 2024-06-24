@@ -1,24 +1,17 @@
 import os
-import glob
-import shutil
-import traceback
-import concurrent.futures
 
 import cv2
 import numpy as np
 
-import tator
-
 import torch
 import supervision as sv
-
 from ultralytics import SAM
 from ultralytics import YOLO
 
-from sahi import AutoDetectionModel
-from sahi.utils.cv import read_image
-from sahi.predict import get_sliced_prediction
 
+# ----------------------------------------------------------------------------------------------------------------------
+# Functions
+# ----------------------------------------------------------------------------------------------------------------------
 def mask_to_polygons(masks):
     """
 
@@ -47,10 +40,12 @@ def mask_to_polygons(masks):
 
 def polygons_to_points(polygons, image):
     """
+
     :param polygons: List of points
     :param image: numpy array
     :return: List of normalized points for each polygon relative to the provided image dim
     """
+    # To hold the normalized polygons
     normalized_polygons = []
 
     for polygon in polygons:
@@ -68,120 +63,155 @@ def polygons_to_points(polygons, image):
 
     return normalized_polygons
 
-class RockAlgorithm():
-    """ Rock detection algorithm
+
+def calculate_slice_parameters(height, width, slices_x=2, slices_y=2, overlap_percentage=0.1):
+    """
+    Calculates the slice parameters when using SAHI.
+
+    :param height:
+    :param width:
+    :param slices_x:
+    :param slices_y:
+    :param overlap_percentage:
+    :return:
+    """
+    # Calculate base slice dimensions
+    slice_width = width // slices_x
+    slice_height = height // slices_y
+
+    # Calculate overlap
+    overlap_width = int(slice_width * overlap_percentage)
+    overlap_height = int(slice_height * overlap_percentage)
+
+    # Adjust slice dimensions to include overlap
+    adjusted_slice_width = slice_width + overlap_width
+    adjusted_slice_height = slice_height + overlap_height
+
+    # Calculate overlap ratios
+    overlap_ratio_w = overlap_width / adjusted_slice_width
+    overlap_ratio_h = overlap_height / adjusted_slice_height
+
+    return (adjusted_slice_width, adjusted_slice_height), (overlap_ratio_w, overlap_ratio_h)
+
+
+class RockAlgorithm:
+    """
+    Rock detection algorithm
 
     Utilizes a configuration file containing the various model/algorithm parameters.
-
     """
 
     def __init__(self, config: dict):
-        """ Constructor
+        """
 
-        :param config: Dictionary containing algorithm configuration information
-
+        :param config:
         """
 
         self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
         self.config = config
 
-    def initialize(self):
-        """ Initialize the model
-        """
+        self.sam_model = None
+        self.yolo_model = None
 
+        self.slicer = None
+
+    def initialize(self):
+        """
+        Initializes the model
+
+        :return:
+        """
+        # Get the rock detection model path as specified in the config file
         model_path = self.config["model_path"]
 
         if not os.path.exists(model_path):
             raise Exception(f"ERROR: Model weights not found in ({model_path})!")
 
-        # If using SAHI, initialize model differently
-        if self.config["smol"]:
-            # Load the YOLO model as auto-detection
-            self.yolo_model = AutoDetectionModel.from_pretrained(
-                model_type=self.config["model_type"],
-                model_path=model_path,
-                confidence_threshold=self.config["model_confidence_threshold"],
-                device=self.device
-            )
-            # Load the SAM model
+        try:
+            # Load the model weights
+            self.yolo_model = YOLO(model_path)
+
+            # Load the SAM model (sam_b, sam_l, sam_h)
+            # This will download the file if it doesn't exist
             self.sam_model = SAM(self.config["sam_model_path"])
 
-        else:
-            # Normal YOLO model convention
-            self.yolo_model = YOLO(model_path)
+        except Exception as e:
+            raise Exception(f"ERROR: Could not load model!\n{e}")
 
         print(f"NOTE: Successfully loaded weights {model_path}")
 
     @torch.no_grad()
+    def slicer_callback(self, image_slice):
+        """
+        Callback function to perform SAHI using supervision
+
+        :param image_slice:
+        :return:
+        """
+        # Get the results of the slice
+        results = self.yolo_model(image_slice)[0]
+        # Convert results to supervision standards
+        results = sv.Detections.from_ultralytics(results)
+
+        return results
+
+    @torch.no_grad()
     def infer(self, original_frame) -> list:
         """
-        :param original_frame: numpy form of the image to process (use sahi read_image())
-        """
+        Performs inference on a single frame; if using smol mode, will use the
+        slicer callback function to perform SAHI using supervision (detections will
+        be aggregated together).
 
-        conf = self.config["model_confidence_threshold"]
+        Detections will be used with SAM to create instance segmentation masks.
+
+        :param original_frame:
+        """
+        # Parameters in the config file
         iou = self.config["iou_threshold"]
+        conf = self.config["model_confidence_threshold"]
+
+        # Perform detection normally
+        detections = self.yolo_model(original_frame,
+                                     iou=iou,
+                                     conf=conf,
+                                     device=self.device)[0]
+
+        # Convert results to supervision standards
+        detections = sv.Detections.from_ultralytics(detections)
 
         if self.config["smol"]:
-            # Run the frame through the SAHI slicer, then SAM to get prediction
 
-            sahi_parameters = {
-              "overlap_height_ratio": self.config["overlap_height_ratio"],
-              "overlap_width_ratio": self.config["overlap_width_ratio"],
-              "postprocess_class_agnostic": self.config["postprocess_class_agnostic"],
-              "postprocess_match_threshold": self.config["postprocess_match_threshold"]
-            }
+            # For the first image, calculate the SAHI parameters
+            if self.slicer is None:
+                # Get the image dimensions
+                frame_height, frame_width = original_frame.shape[:2]
+                # Get the slicer parameter values (defaults 2 x 2 with 10 % overlap)
+                slice_wh, overlap_ratio_wh = calculate_slice_parameters(frame_height, frame_width)
+                # Create the slicer
+                self.slicer = sv.InferenceSlicer(callback=self.slicer_callback,
+                                                 slice_wh=slice_wh,
+                                                 iou_threshold=0.10,
+                                                 overlap_ratio_wh=overlap_ratio_wh,
+                                                 overlap_filter_strategy=sv.OverlapFilter.NON_MAX_MERGE)
 
-            sliced_predictions = get_sliced_prediction(original_frame,
-                                                       self.yolo_model,
-                                                       **sahi_parameters)
+            # Run the frame through the slicer
+            smol_detections = self.slicer(original_frame)
+            # Merge the results
+            detections = sv.Detections.merge([detections, smol_detections])
 
-            # Extract the bounding boxes
-            bboxes = np.array([_.bbox.to_xyxy() for _ in sliced_predictions.object_prediction_list])
-            confidences = np.array([_.score.value for _ in sliced_predictions.object_prediction_list])
-
-            if len(bboxes):
-
-                # Update results (version issue)
-                detections = sv.Detections(xyxy=bboxes,
-                                           confidence=confidences,
-                                           class_id=np.full(len(bboxes, ), fill_value=0))
-
-                # Run the boxes through SAM as prompts
-                masks = self.sam_model(original_frame, bboxes=bboxes, show=False)[0]
-                masks = masks.masks.data.cpu().numpy()
-                detections.mask = masks
-
-            else:
-                # If there are no detections, make dummy
-                detections = sv.Detections.empty()
-
-        else:
-            # Run the frame through the YOLO model to get predictions
-            result = yolo_model(original_frame,
-                                imgsz=1280,
-                                conf=conf,
-                                iou=iou,
-                                half=False,
-                                augment=False,
-                                max_det=2000,
-                                verbose=False,
-                                retina_masks=True,
-                                show=False)[0]
-
-            # Version issues
-            result.obb = None
-
-            # Convert the results
-            detections = sv.Detections.from_ultralytics(result)
-
-        # Use NMS
+        # Perform NMS, and filter based on confidence scores
         detections = detections.with_nms(iou, class_agnostic=True)
-        # Get the masks of the detections
-        masks = detections.mask.astype(np.uint8)
+        detections = detections[detections.confidence > conf]
+
+        # Predict instance segmentation masks using SAM
+        bboxes = detections.xyxy
+        masks = self.sam_model(original_frame, bboxes=bboxes)[0]
+        masks = masks.masks.data.cpu().numpy()
+        detections.mask = masks.astype(np.uint8)
+
         # Convert to polygons
-        polygons = mask_to_polygons(masks)
+        polygons = mask_to_polygons(detections.mask)
         # Convert to points
         polygon_points = polygons_to_points(polygons, original_frame)
 
         return polygon_points
-

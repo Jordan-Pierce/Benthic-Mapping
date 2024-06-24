@@ -81,7 +81,7 @@ def inference(source_weights, source_video, output_dir, start_at, end_at, conf, 
     try:  # Load the model weights
         yolo_model = YOLO(source_weights)
 
-        # Load the SAM model
+        # Load the SAM model (sam_b, sam_l, sam_h)
         sam_model = SAM('sam_l.pt')
 
         # Create the annotator for detection
