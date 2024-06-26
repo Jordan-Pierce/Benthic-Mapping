@@ -158,7 +158,11 @@ class VideoInferencer:
 
                     detections = detections.with_nms(self.iou, class_agnostic=True)
                     detections = detections[detections.confidence > self.conf]
-                    labels = detections.tracker_id
+
+                    # Prepare the labels
+                    class_names = detections.data['class_name'].tolist()
+                    confidences = detections.confidence.tolist()
+                    labels = [f"{name} {conf:0.2f}" for name, conf in list(zip(class_names, confidences))]
 
                     if self.segment:
                         bboxes = detections.xyxy
@@ -167,7 +171,8 @@ class VideoInferencer:
                         detections.mask = masks
                     if self.track:
                         detections = self.tracker.update_with_detections(detections)
-                        labels = detections.tracker_id.astype(str)
+                        tracker_ids = detections.tracker_id.astype(str).tolist()
+                        labels = [f"{t_id} {l}" for t_id, l in list(zip(tracker_ids, labels))]
 
                     frame = self.mask_annotator.annotate(scene=frame, detections=detections)
                     frame = self.box_annotator.annotate(scene=frame, detections=detections)
@@ -194,10 +199,10 @@ def main():
 
     parser = argparse.ArgumentParser(description="Video Inferencing with YOLO, SAM, and ByteTrack")
 
-    parser.add_argument("--source_weights", required=True, type=str,
+    parser.add_argument("--weights_path", required=True, type=str,
                         help="Path to the source weights file")
 
-    parser.add_argument("--source_video", required=True, type=str,
+    parser.add_argument("--video_path", required=True, type=str,
                         help="Path to the source video file")
 
     parser.add_argument("--output_dir", required=True, type=str,

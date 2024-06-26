@@ -112,16 +112,22 @@ class DataDownloader:
         """
         data = []
         for q in query:
-            media = q.media
-            frame = q.frame
-            frame_name = f"{q.media}_{q.frame}.jpg"
-            x = q.x
-            y = q.y
-            width = q.width
-            height = q.height
-            label = q.attributes['ScientificName']
 
-            data.append([media, frame_name, frame, x, y, width, height, label])
+            if 'ScientificName' in q.attributes:
+                media = q.media
+                frame = q.frame
+                frame_name = f"{q.media}_{q.frame}.jpg"
+                x = q.x
+                y = q.y
+                width = q.width
+                height = q.height
+
+                try:
+                    label = str(q.attributes['ScientificName'])
+                except:
+                    label = 'Unknown'
+
+                data.append([media, frame_name, frame, x, y, width, height, label])
 
         return pd.DataFrame(data, columns=['media', 'name', 'frame', 'x', 'y', 'width', 'height', 'label'])
 
@@ -180,7 +186,7 @@ class DataDownloader:
         print(f"NOTE: Found {len(query)} Localizations")
 
         # Extract needed information from data
-        data = self.process_query(query)
+        data = self.process_query(query).head(1000)
         classes = data['label'].unique().tolist()
         class_to_id = {class_name: i for i, class_name in enumerate(classes)}
 
@@ -233,7 +239,7 @@ def main():
     parser.add_argument("--search_string", type=str, required=True,
                         help="Search string for localizations")
 
-    parser.add_argument("--dataset_name", type=str, required=True,
+    parser.add_argument("--dataset_name", type=str, default="Test",
                         help="Name of the dataset")
 
     parser.add_argument("--output_dir", type=str,
