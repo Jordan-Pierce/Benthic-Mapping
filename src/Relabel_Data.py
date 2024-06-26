@@ -47,7 +47,7 @@ if __name__ == "__main__":
     os.makedirs(training_data_dir, exist_ok=True)
 
     # Provide the weights to the previously best trained YOLO model
-    source_weights = "B:\\Benthic-Mapping\\Data\\Runs\\2024-05-31_18-39-21_detect_yolov8s\\weights\\best.pt"
+    source_weights = "B:\\Benthic-Mapping\\Data\\Runs\\2024-06-26_09-41-20_detect_yolov10m\\weights\\best.pt"
 
     # ------------------------------------------------------
     # UPDATE THIS AND ONLY THIS
@@ -73,8 +73,8 @@ if __name__ == "__main__":
     SAVE_LABELS = True
 
     # CV Tasks
-    DETECTION = False
-    SEGMENTATION = True
+    DETECTION = True
+    SEGMENTATION = False
 
     # There can only be one
     assert DETECTION != SEGMENTATION
@@ -90,7 +90,7 @@ if __name__ == "__main__":
         include_masks = True
 
     # Non-maximum suppression threshold
-    conf = 0.30
+    conf = 0.2
     iou = 0.1
 
     # Extract every N frames
@@ -133,7 +133,6 @@ if __name__ == "__main__":
             results = yolo_model.predict(f"{temporary_image_folder}/*.*",
                                          conf=conf,
                                          iou=iou,
-                                         # imgsz=1280,
                                          show=False,
                                          show_labels=False,
                                          stream=True)
@@ -156,19 +155,24 @@ if __name__ == "__main__":
             image_names = list(dataset.images.keys())
 
             for image_name in tqdm(image_names):
-                # numpy arrays for this image
-                image = dataset.images[image_name]
-                annotations = dataset.annotations[image_name]
-                class_id = dataset.annotations[image_name].class_id
 
-                # Filter boxes with NMS (removes all the duplicates, faster than with_nms)
-                predictions = np.column_stack((annotations.xyxy, annotations.confidence))
-                indices = sv.detection.utils.box_non_max_suppression(predictions, iou)
-                annotations = annotations[indices]
+                try:
+                    # numpy arrays for this image
+                    image = dataset.images[image_name]
+                    annotations = dataset.annotations[image_name]
+                    class_id = dataset.annotations[image_name].class_id
 
-                # Update the annotations and class IDs in dataset
-                dataset.annotations[image_name] = annotations
-                dataset.annotations[image_name].class_id = np.zeros_like(class_id)
+                    # Filter boxes with NMS (removes all the duplicates, faster than with_nms)
+                    predictions = np.column_stack((annotations.xyxy, annotations.confidence))
+                    indices = sv.detection.utils.box_non_max_suppression(predictions, iou)
+                    annotations = annotations[indices]
+
+                    # Update the annotations and class IDs in dataset
+                    dataset.annotations[image_name] = annotations
+                    dataset.annotations[image_name].class_id = np.zeros_like(class_id)
+
+                except:
+                    pass
 
             # Change the dataset classes
             dataset.classes = classes

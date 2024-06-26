@@ -1,8 +1,10 @@
 import os.path
 import argparse
+import traceback
 from tqdm import tqdm
 
 import cv2
+import numpy as np
 
 import torch
 import supervision as sv
@@ -13,250 +15,244 @@ from ultralytics import YOLO
 # ----------------------------------------------------------------------------------------------------------------------
 # Functions
 # ----------------------------------------------------------------------------------------------------------------------
-def calculate_slice_parameters(video_width, video_height, slices_x=2, slices_y=2, overlap_percentage=0.1):
-    """
 
-    :param video_width:
-    :param video_height:
+def calculate_slice_parameters(width: int, height: int, slices_x: int = 2, slices_y: int = 2, overlap: float = 0.1):
+    """
+    Calculate slice parameters for video frames; defaults to 2x2, 10% overlap
+
+    :param width:
+    :param height:
     :param slices_x:
     :param slices_y:
-    :param overlap_percentage:
+    :param overlap:
     :return:
     """
-    # Calculate base slice dimensions
-    slice_width = video_width // slices_x
-    slice_height = video_height // slices_y
-
-    # Calculate overlap
-    overlap_width = int(slice_width * overlap_percentage)
-    overlap_height = int(slice_height * overlap_percentage)
-
-    # Adjust slice dimensions to include overlap
+    slice_width = width // slices_x
+    slice_height = height // slices_y
+    overlap_width = int(slice_width * overlap)
+    overlap_height = int(slice_height * overlap)
     adjusted_slice_width = slice_width + overlap_width
     adjusted_slice_height = slice_height + overlap_height
-
-    # Calculate overlap ratios
     overlap_ratio_w = overlap_width / adjusted_slice_width
     overlap_ratio_h = overlap_height / adjusted_slice_height
 
     return (adjusted_slice_width, adjusted_slice_height), (overlap_ratio_w, overlap_ratio_h)
 
 
-def inference(source_weights, source_video, output_dir, start_at, end_at, conf, iou, track, smol, show):
-    """
+# ----------------------------------------------------------------------------------------------------------------------
+# Classes
+# ----------------------------------------------------------------------------------------------------------------------
 
-    :param source_weights:
-    :param source_video:
-    :param output_dir:
-    :param start_at:
-    :param end_at:
-    :param conf:
-    :param iou:
-    :param track:
-    :param smol:
-    :param show:
-    :return:
-    """
-    def slicer_callback(image_slice):
-        """Callback function to perform SAHI using supervision"""
-        # Get the results of the slice
-        results = yolo_model(image_slice)[0]
-        # Convert results to supervision standards
+class VideoInferencer:
+    def __init__(self, weights_path: str, video_path: str, output_dir: str, start_at: int, end_at: int,
+                 conf: float, iou: float, track: bool, segment: bool, smol: bool, show: bool):
+        """
+
+        :param weights_path:
+        :param video_path:
+        :param output_dir:
+        :param start_at:
+        :param end_at:
+        :param conf:
+        :param iou:
+        :param track:
+        :param smol:
+        :param show:
+        """
+        self.source_weights = weights_path
+        self.source_video = video_path
+        self.output_dir = output_dir
+        self.start_at = start_at
+        self.end_at = end_at
+        self.conf = conf
+        self.iou = iou
+        self.track = track
+        self.segment = segment
+        self.smol = smol
+        self.show = show
+
+        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+
+        self.yolo_model = None
+        self.sam_model = None
+        self.box_annotator = None
+        self.mask_annotator = None
+        self.labeler = None
+        self.tracker = None
+        self.slicer = None
+
+    def slicer_callback(self, image_slice: np.ndarray):
+        """
+        Prepares a callback to be used with SAHI
+
+        :param image_slice:
+        :return:
+        """
+        results = self.yolo_model(image_slice)[0]
         results = sv.Detections.from_ultralytics(results)
-
         return results
 
-    # Check for CUDA
-    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    def load_models(self):
+        """
+        Loads the models
 
-    # Create the target path
-    target_video_path = f"{output_dir}/{os.path.basename(source_video)}"
-    # Create the target directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
+        :return:
+        """
+        try:
+            self.yolo_model = YOLO(self.source_weights)
+            self.sam_model = SAM('sam_l.pt')
 
-    # Create the video generators
-    frame_generator = sv.get_video_frames_generator(source_path=source_video)
-    video_info = sv.VideoInfo.from_video_path(video_path=source_video)
+            self.box_annotator = sv.BoundingBoxAnnotator()
+            self.mask_annotator = sv.MaskAnnotator()
+            self.labeler = sv.LabelAnnotator()
 
-    try:  # Load the model weights
-        yolo_model = YOLO(source_weights)
+            if self.track:
+                self.tracker = sv.ByteTrack()
 
-        # Load the SAM model (sam_b, sam_l, sam_h)
-        sam_model = SAM('sam_l.pt')
+        except Exception as e:
+            raise Exception(f"ERROR: Could not load model!\n{e}")
 
-        # Create the annotator for detection
-        box_annotator = sv.BoundingBoxAnnotator()
-        # Create the annotators for segmentation
-        mask_annotator = sv.MaskAnnotator()
-        # Adds label to annotation (tracking)
-        labeler = sv.LabelAnnotator()
+    def setup_slicer(self, video_info):
+        """
+        Creates the SAHI slicer to be used within slicer callback;
+        uses the video dimensions to determine slicer parameters.
 
-    except Exception as e:
-        raise Exception(f"ERROR: Could not load model!\n{e}")
-
-    if track:  # Set up the tracker
-        tracker = sv.ByteTrack()
-
-    if smol:  # Set up the slicer
-        # Get the slicer parameter values (defaults 2 x 2 with 10 % overlap)
+        :param video_info:
+        :return:
+        """
         slice_wh, overlap_ratio_wh = calculate_slice_parameters(video_info.width, video_info.height)
-        # Create the slicer
-        slicer = sv.InferenceSlicer(callback=slicer_callback,
-                                    slice_wh=slice_wh,
-                                    iou_threshold=0.10,
-                                    overlap_ratio_wh=overlap_ratio_wh,
-                                    overlap_filter_strategy=sv.OverlapFilter.NON_MAX_MERGE)
 
-    # Where to start and end inference
-    if start_at <= 0:
-        start_at = 0
-    if end_at <= -1:
-        end_at = video_info.total_frames
+        self.slicer = sv.InferenceSlicer(callback=self.slicer_callback,
+                                         slice_wh=slice_wh,
+                                         iou_threshold=0.10,
+                                         overlap_ratio_wh=overlap_ratio_wh,
+                                         overlap_filter_strategy=sv.OverlapFilter.NON_MAX_MERGE)
 
-    # Frame count
-    f_idx = 0
+    def run_inference(self):
+        """
+        Runs inference on the video, range of frames specified.
 
-    # Loop through all the frames
-    with sv.VideoSink(target_path=target_video_path, video_info=video_info) as sink:
-        for frame in tqdm(frame_generator, total=video_info.total_frames):
+        :return:
+        """
+        os.makedirs(self.output_dir, exist_ok=True)
+        target_video_path = f"{self.output_dir}/{os.path.basename(self.source_video)}"
+        frame_generator = sv.get_video_frames_generator(source_path=self.source_video)
+        video_info = sv.VideoInfo.from_video_path(video_path=self.source_video)
 
-            # Only make predictions within range
-            if start_at < f_idx < end_at:
+        self.load_models()
 
-                # Perform predictions normally
-                detections = yolo_model(frame,
-                                        iou=iou,
-                                        conf=conf,
-                                        device=device)[0]
+        if self.smol:
+            self.setup_slicer(video_info)
+        if self.start_at <= 0:
+            self.start_at = 0
+        if self.end_at <= -1:
+            self.end_at = video_info.total_frames
 
-                # Convert results to supervision standards
-                detections = sv.Detections.from_ultralytics(detections)
+        f_idx = 0
+        with sv.VideoSink(target_path=target_video_path, video_info=video_info) as sink:
+            for frame in tqdm(frame_generator, total=video_info.total_frames):
 
-                if smol:
-                    # Run the frame through the slicer
-                    smol_detections = slicer(frame)
-                    # Merge the results
-                    detections = sv.Detections.merge([detections, smol_detections])
+                if self.start_at < f_idx < self.end_at:
+                    detections = self.yolo_model(frame, iou=self.iou, conf=self.conf, device=self.device)[0]
+                    detections = sv.Detections.from_ultralytics(detections)
 
-                # Perform NMS, and filter based on confidence scores
-                detections = detections.with_nms(iou, class_agnostic=True)
-                detections = detections[detections.confidence > conf]
-                labels = detections.tracker_id
+                    if self.smol:
+                        smol_detections = self.slicer(frame)
+                        detections = sv.Detections.merge([detections, smol_detections])
 
-                if True:
-                    bboxes = detections.xyxy
-                    masks = sam_model(frame, bboxes=bboxes)[0]
-                    masks = masks.masks.data.cpu().numpy()
-                    detections.mask = masks
+                    detections = detections.with_nms(self.iou, class_agnostic=True)
+                    detections = detections[detections.confidence > self.conf]
+                    labels = detections.tracker_id
 
-                if track:  # Track the detections
-                    detections = tracker.update_with_detections(detections)
-                    labels = detections.tracker_id.astype(str)
+                    if self.segment:
+                        bboxes = detections.xyxy
+                        masks = self.sam_model(frame, bboxes=bboxes)[0]
+                        masks = masks.masks.data.cpu().numpy()
+                        detections.mask = masks
+                    if self.track:
+                        detections = self.tracker.update_with_detections(detections)
+                        labels = detections.tracker_id.astype(str)
 
-                # Create an annotated version of the frame
-                frame = mask_annotator.annotate(scene=frame, detections=detections)
-                frame = box_annotator.annotate(scene=frame, detections=detections)
+                    frame = self.mask_annotator.annotate(scene=frame, detections=detections)
+                    frame = self.box_annotator.annotate(scene=frame, detections=detections)
+                    frame = self.labeler.annotate(scene=frame, detections=detections, labels=labels)
 
-                # Adds labels or track IDs
-                frame = labeler.annotate(scene=frame,
-                                         detections=detections,
-                                         labels=labels)
+                    sink.write_frame(frame=frame)
 
-                # Write the frame to the video
-                sink.write_frame(frame=frame)
+                    if self.show:
+                        cv2.imshow('Predictions', frame)
+                        if cv2.waitKey(1) & 0xFF == ord('q'):
+                            break
 
-                if show:
-                    cv2.imshow('Predictions', frame)
-
-                    # Allow the frame to show, and update
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
-
-            # Increase frame count
-            f_idx += 1
-
-            # Break early as needed
-            if f_idx >= end_at:
-                cv2.destroyAllWindows()
-                break
+                f_idx += 1
+                if f_idx >= self.end_at:
+                    cv2.destroyAllWindows()
+                    break
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Video Processing with YOLO and ByteTrack")
+def main():
 
-    parser.add_argument(
-        "--source_weights",
-        required=True,
-        help="Path to the source weights file",
-        type=str,
-    )
-    parser.add_argument(
-        "--source_video",
-        required=True,
-        help="Path to the source video file",
-        type=str,
-    )
-    parser.add_argument(
-        "--output_dir",
-        required=True,
-        help="Path to the target video directory (output)",
-        type=str,
-    )
-    parser.add_argument(
-        "--start_at",
-        default=0,
-        help="Frame to start inference",
-        type=int,
-    )
-    parser.add_argument(
-        "--end_at",
-        default=-1,
-        help="Frame to end inference",
-        type=int,
-    )
-    parser.add_argument(
-        "--conf",
-        default=0.65,
-        help="Confidence threshold for the model",
-        type=float,
-    )
-    parser.add_argument(
-        "--iou",
-        default=0.25,
-        help="IOU threshold for the model",
-        type=float
-    )
-    parser.add_argument(
-        "--track",
-        action='store_true',
-        help="Uses ByteTrack to track detections",
-    )
-    parser.add_argument(
-        "--smol",
-        action='store_true',
-        help="Uses SAHI to find smaller objects (takes longer)",
-    )
-    parser.add_argument(
-        "--show",
-        action='store_true',
-        help="Display the inference video",
-    )
+    parser = argparse.ArgumentParser(description="Video Inferencing with YOLO, SAM, and ByteTrack")
+
+    parser.add_argument("--source_weights", required=True, type=str,
+                        help="Path to the source weights file")
+
+    parser.add_argument("--source_video", required=True, type=str,
+                        help="Path to the source video file")
+
+    parser.add_argument("--output_dir", required=True, type=str,
+                        help="Path to the target video directory (output)")
+
+    parser.add_argument("--start_at", default=0, type=int,
+                        help="Frame to start inference")
+
+    parser.add_argument("--end_at", default=-1, type=int,
+                        help="Frame to end inference")
+
+    parser.add_argument("--conf", default=0.65, type=float,
+                        help="Confidence threshold for the model")
+
+    parser.add_argument("--iou", default=0.25, type=float,
+                        help="IOU threshold for the model")
+
+    parser.add_argument("--track", action='store_true',
+                        help="Uses ByteTrack to track detections")
+
+    parser.add_argument("--segment", action='store_true',
+                        help="Uses SAM to create masks on detections (takes longer)")
+
+    parser.add_argument("--smol", action='store_true',
+                        help="Uses SAHI to find smaller objects (takes longer)")
+
+    parser.add_argument("--show", action='store_true',
+                        help="Display the inference video")
 
     args = parser.parse_args()
 
-    inference(
-        source_weights=args.source_weights,
-        source_video=args.source_video,
-        output_dir=args.output_dir,
-        track=args.track,
-        start_at=args.start_at,
-        end_at=args.end_at,
-        conf=args.conf,
-        iou=args.iou,
-        smol=args.smol,
-        show=args.show
-    )
+    try:
+        inference = VideoInferencer(
+            weights_path=args.weights_path,
+            video_path=args.video_path,
+            output_dir=args.output_dir,
+            start_at=args.start_at,
+            end_at=args.end_at,
+            conf=args.conf,
+            iou=args.iou,
+            track=args.track,
+            segment=args.segment,
+            smol=args.smol,
+            show=args.show
+        )
+        inference.run_inference()
+        print("Done.")
+    except Exception as e:
+        print(f"ERROR: Could not finish process.\n{e}")
+        print(traceback.format_exc())
+
+
+if __name__ == "__main__":
+    main()
