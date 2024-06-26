@@ -13,33 +13,6 @@ from ultralytics import YOLO
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Functions
-# ----------------------------------------------------------------------------------------------------------------------
-
-def calculate_slice_parameters(width: int, height: int, slices_x: int = 2, slices_y: int = 2, overlap: float = 0.1):
-    """
-    Calculate slice parameters for video frames; defaults to 2x2, 10% overlap
-
-    :param width:
-    :param height:
-    :param slices_x:
-    :param slices_y:
-    :param overlap:
-    :return:
-    """
-    slice_width = width // slices_x
-    slice_height = height // slices_y
-    overlap_width = int(slice_width * overlap)
-    overlap_height = int(slice_height * overlap)
-    adjusted_slice_width = slice_width + overlap_width
-    adjusted_slice_height = slice_height + overlap_height
-    overlap_ratio_w = overlap_width / adjusted_slice_width
-    overlap_ratio_h = overlap_height / adjusted_slice_height
-
-    return (adjusted_slice_width, adjusted_slice_height), (overlap_ratio_w, overlap_ratio_h)
-
-
-# ----------------------------------------------------------------------------------------------------------------------
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -81,6 +54,29 @@ class VideoInferencer:
         self.tracker = None
         self.slicer = None
 
+    @staticmethod
+    def calculate_slice_parameters(width: int, height: int, slices_x: int = 2, slices_y: int = 2, overlap: float = 0.1):
+        """
+        Calculate slice parameters for video frames; defaults to 2x2, 10% overlap
+
+        :param width:
+        :param height:
+        :param slices_x:
+        :param slices_y:
+        :param overlap:
+        :return:
+        """
+        slice_width = width // slices_x
+        slice_height = height // slices_y
+        overlap_width = int(slice_width * overlap)
+        overlap_height = int(slice_height * overlap)
+        adjusted_slice_width = slice_width + overlap_width
+        adjusted_slice_height = slice_height + overlap_height
+        overlap_ratio_w = overlap_width / adjusted_slice_width
+        overlap_ratio_h = overlap_height / adjusted_slice_height
+
+        return (adjusted_slice_width, adjusted_slice_height), (overlap_ratio_w, overlap_ratio_h)
+
     def slicer_callback(self, image_slice: np.ndarray):
         """
         Prepares a callback to be used with SAHI
@@ -120,7 +116,7 @@ class VideoInferencer:
         :param video_info:
         :return:
         """
-        slice_wh, overlap_ratio_wh = calculate_slice_parameters(video_info.width, video_info.height)
+        slice_wh, overlap_ratio_wh = self.calculate_slice_parameters(video_info.width, video_info.height)
 
         self.slicer = sv.InferenceSlicer(callback=self.slicer_callback,
                                          slice_wh=slice_wh,

@@ -7,41 +7,6 @@ from typing import List
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Functions
-# ----------------------------------------------------------------------------------------------------------------------
-
-def convert_video(input_file: str, output_dir: str):
-    """
-    Convert the video file to a specific, and consistent format
-
-    :param input_file:
-    :param output_dir:
-    :return:
-    """
-    os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, os.path.splitext(os.path.basename(input_file))[0] + '.mp4')
-
-    if os.path.exists(output_file):
-        return
-
-    ffmpeg_cmd = [
-        'ffmpeg',
-        '-i', input_file,
-        '-c:v', 'libx264',
-        '-crf', '23',
-        '-c:a', 'aac',
-        '-strict', 'experimental',
-        output_file
-    ]
-
-    try:
-        subprocess.run(ffmpeg_cmd, check=True)
-        print(f'Successfully converted {input_file} to {output_file}')
-    except subprocess.CalledProcessError as e:
-        print(f'Error converting {input_file}: {e}')
-
-
-# ----------------------------------------------------------------------------------------------------------------------
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -74,6 +39,37 @@ class VideoDownloader:
         except Exception as e:
             raise Exception(f"ERROR: Could not authenticate with provided API Token\n{e}")
 
+    @staticmethod
+    def convert_video(input_file: str, output_dir: str):
+        """
+        Convert the video file to a specific, and consistent format
+
+        :param input_file:
+        :param output_dir:
+        :return:
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        output_file = os.path.join(output_dir, os.path.splitext(os.path.basename(input_file))[0] + '.mp4')
+
+        if os.path.exists(output_file):
+            return
+
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-i', input_file,
+            '-c:v', 'libx264',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-strict', 'experimental',
+            output_file
+        ]
+
+        try:
+            subprocess.run(ffmpeg_cmd, check=True)
+            print(f'Successfully converted {input_file} to {output_file}')
+        except subprocess.CalledProcessError as e:
+            print(f'Error converting {input_file}: {e}')
+
     def download_and_convert(self, media_ids: List[str]):
         """
         Download and convert a set of video files
@@ -103,7 +99,7 @@ class VideoDownloader:
 
                 if os.path.exists(output_video_path):
                     print(f"NOTE: Media {media.name} downloaded successfully")
-                    convert_video(output_video_path, self.converted_video_dir)
+                    self.convert_video(output_video_path, self.converted_video_dir)
                 else:
                     print(f"ERROR: Media {media.name} did not download successfully; skipping")
 

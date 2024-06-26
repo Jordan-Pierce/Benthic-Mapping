@@ -24,8 +24,7 @@ from Common import render_dataset
 # ----------------------------------------------------------------------------------------------------------------------
 
 class DataDownloader:
-    def __init__(self, api_token: str, project_id: int, search_string: str,
-                 dataset_name: str, output_dir: str, single_cls: bool):
+    def __init__(self, api_token: str, project_id: int, search_string: str, dataset_name: str, output_dir: str):
         """
 
         :param api_token:
@@ -33,14 +32,12 @@ class DataDownloader:
         :param search_string:
         :param dataset_name:
         :param output_dir:
-        :param single_cls:
         """
         self.api = self._authenticate(api_token)
         self.project_id = project_id
         self.search_string = search_string
 
         self.dataset_name = dataset_name
-        self.single_cls = single_cls
 
         self.root = output_dir
         self.data_dir = f"{self.root}/Data/Training_Data"
@@ -106,7 +103,8 @@ class DataDownloader:
             future_to_frame = {executor.submit(self.download_frame, media, frame): frame for frame in frames}
             return [future.result()[1] for future in concurrent.futures.as_completed(future_to_frame)]
 
-    def process_query(self, query):
+    @staticmethod
+    def process_query(query):
         """
 
         :param query:
@@ -141,7 +139,8 @@ class DataDownloader:
         frames = self.download_frames(media, subset['frame'].unique())
         return subset, frames
 
-    def process_frame(self, frame_path: str, data: pd.DataFrame, class_to_id: Dict[str, int]):
+    @staticmethod
+    def process_frame(frame_path: str, data: pd.DataFrame, class_to_id: Dict[str, int]):
         """
         Process a single frame and create detections.
 
@@ -241,9 +240,6 @@ def main():
                         default=os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
                         help="Search string for localizations")
 
-    parser.add_argument("--single_cls", action='store_true',
-                        help="Overwrite all class labels with a single class name")
-
     args = parser.parse_args()
 
     try:
@@ -251,8 +247,7 @@ def main():
                                     project_id=args.project_id,
                                     search_string=args.search_string,
                                     dataset_name=args.dataset_name,
-                                    output_dir=args.output_dir,
-                                    single_cls=args.single_cls)
+                                    output_dir=args.output_dir)
         downloader.download_labels()
         print("Done.")
     except Exception as e:
@@ -262,4 +257,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
