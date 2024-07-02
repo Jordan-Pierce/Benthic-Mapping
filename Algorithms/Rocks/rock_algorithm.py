@@ -149,7 +149,7 @@ class RockAlgorithm:
         :return:
         """
         # Get the results of the slice
-        results = self.yolo_model(image_slice)[0]
+        results = self.yolo_model(image_slice, verbose=False)[0]
         # Convert results to supervision standards
         results = sv.Detections.from_ultralytics(results)
 
@@ -174,7 +174,8 @@ class RockAlgorithm:
         detections = self.yolo_model(original_frame,
                                      iou=iou,
                                      conf=conf,
-                                     device=self.device)[0]
+                                     device=self.device,
+                                     verbose=False)[0]
 
         # Convert results to supervision standards
         detections = sv.Detections.from_ultralytics(detections)
@@ -205,7 +206,7 @@ class RockAlgorithm:
 
         # Predict instance segmentation masks using SAM
         bboxes = detections.xyxy
-        masks = self.sam_model(original_frame, bboxes=bboxes)[0]
+        masks = self.sam_model(original_frame, bboxes=bboxes, verbose=False)[0]
         masks = masks.masks.data.cpu().numpy()
         detections.mask = masks.astype(np.uint8)
 
