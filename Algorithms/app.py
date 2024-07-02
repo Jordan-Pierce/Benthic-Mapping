@@ -103,7 +103,16 @@ class TatorOperator:
 # Gradio
 # ----------------------------------------------------------------------------------------------------------------------
 
-def run_rock_algorithm(token, remember_token, project_id, media_id, start_at, end_at, conf, iou, model_weights):
+def run_rock_algorithm(token,
+                       remember_token,
+                       project_id,
+                       media_id,
+                       start_at,
+                       end_at,
+                       conf,
+                       iou,
+                       model_weights,
+                       progress=gr.Progress()):
     """
 
     :param token:
@@ -115,6 +124,7 @@ def run_rock_algorithm(token, remember_token, project_id, media_id, start_at, en
     :param conf:
     :param iou:
     :param model_weights:
+    :param progress:
     :return:
     """
     try:
@@ -133,17 +143,25 @@ def run_rock_algorithm(token, remember_token, project_id, media_id, start_at, en
         }
 
         rock_algo = RockAlgorithm(config)
+        progress(0, "Initializing algorithm...")
         rock_algo.initialize()
 
+        total_frames = end_at - start_at + 1
         for i, frame_idx in enumerate(range(start_at, end_at + 1)):
+            progress((i + 1) / total_frames, f"Processing frame {frame_idx}/{end_at}")
+            progress((i + 1) / total_frames, f"Downloading frame {frame_idx}")
             frame = tator_operator.download_frame(frame_idx)
+            progress((i + 1) / total_frames, f"Making predictions for frame {frame_idx}")
             predictions = rock_algo.infer(frame)
+            progress((i + 1) / total_frames, f"Uploading predictions for frame {frame_idx}")
             tator_operator.upload_predictions(frame_idx, predictions)
 
+        gr.Info("Processing completed successfully!")
         return "Done."
 
     except Exception as e:
         error_msg = f"ERROR: Failed to complete inference!\n{e}\n{traceback.format_exc()}"
+        gr.Error(error_msg)
         return error_msg
 
 
@@ -160,10 +178,14 @@ def launch_gui():
                 gr.Markdown("## Upload Rock Predictions")
                 token = gr.Textbox(label="Token", type="password", value=os.getenv("TATOR_TOKEN"))
                 remember_token = gr.Checkbox(label="Remember Token", value=True)
-                project_id = gr.Number(label="Project ID", value=155)
-                media_id = gr.Number(label="Media ID")
-                start_at = gr.Number(label="Start Frame")
-                end_at = gr.Number(label="End Frame")
+
+                with gr.Row():
+                    with gr.Column():
+                        project_id = gr.Number(label="Project ID", value=155)
+                        start_at = gr.Number(label="Start Frame")
+                    with gr.Column():
+                        media_id = gr.Number(label="Media ID")
+                        end_at = gr.Number(label="End Frame")
 
             with gr.Group():
                 gr.Markdown("## Model Parameters")
@@ -180,8 +202,7 @@ def launch_gui():
             outputs=output
         )
 
-    app.queue()
-    app.launch()
+    app.launch(share=True)
 
 
 if __name__ == "__main__":
