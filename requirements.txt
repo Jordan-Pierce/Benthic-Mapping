@@ -4,7 +4,8 @@ tqdm
 numpy
 pandas
 scipy
-scikit_learn
+gooey
+gradio
 matplotlib
 opencv-python
 opencv-contrib-python

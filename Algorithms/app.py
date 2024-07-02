@@ -1,7 +1,7 @@
 import os
 import traceback
-from gooey import Gooey, GooeyParser
 
+import gradio as gr
 import tator
 import cv2
 
@@ -100,128 +100,89 @@ class TatorOperator:
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Main
+# Gradio
 # ----------------------------------------------------------------------------------------------------------------------
 
-@Gooey(dump_build_config=True,
-       program_name="Benthic-Mapping",
-       default_size=(900, 600),  # width, height
-       console=True,
-       richtext_controls=True,
-       progress_regex=r"^progress: (?P<current>\d+)/(?P<total>\d+)$",
-       progress_expr="current / total * 100",
-       hide_progress_msg=True,
-       timing_options={
-           'show_time_remaining': True,
-           'hide_time_remaining_on_complete': True,
-       })
-def main():
+def run_rock_algorithm(token, remember_token, project_id, media_id, start_at, end_at, conf, iou, model_weights):
+    """
+
+    :param token:
+    :param remember_token:
+    :param project_id:
+    :param media_id:
+    :param start_at:
+    :param end_at:
+    :param conf:
+    :param iou:
+    :param model_weights:
+    :return:
+    """
+    try:
+        if remember_token:
+            os.environ['TATOR_TOKEN'] = str(token)
+
+        tator_operator = TatorOperator(token, project_id, media_id, start_at, end_at)
+
+        config = {
+            "model_confidence_threshold": float(conf),
+            "iou_threshold": float(iou),
+            "smol": False,
+            "model_type": "yolov10",
+            "model_path": model_weights,
+            "sam_model_path": "sam_l.pt"
+        }
+
+        rock_algo = RockAlgorithm(config)
+        rock_algo.initialize()
+
+        for i, frame_idx in enumerate(range(start_at, end_at + 1)):
+            frame = tator_operator.download_frame(frame_idx)
+            predictions = rock_algo.infer(frame)
+            tator_operator.upload_predictions(frame_idx, predictions)
+
+        return "Done."
+
+    except Exception as e:
+        error_msg = f"ERROR: Failed to complete inference!\n{e}\n{traceback.format_exc()}"
+        return error_msg
+
+
+def launch_gui():
     """
 
     :return:
     """
-    parser = GooeyParser(description="")
+    with gr.Blocks(title="Benthic-Mapping") as app:
+        gr.Markdown("# Benthic-Mapping")
 
-    parser.add_argument('--verbose', help='be verbose', dest='verbose', action='store_true', default=False)
-    subs = parser.add_subparsers(help='commands', dest='command')
-    upload_parser = subs.add_parser('RockAlgorithm')
+        with gr.Tab("RockAlgorithm"):
+            with gr.Group():
+                gr.Markdown("## Upload Rock Predictions")
+                token = gr.Textbox(label="Token", type="password", value=os.getenv("TATOR_TOKEN"))
+                remember_token = gr.Checkbox(label="Remember Token", value=True)
+                project_id = gr.Number(label="Project ID", value=155)
+                media_id = gr.Number(label="Media ID")
+                start_at = gr.Number(label="Start Frame")
+                end_at = gr.Number(label="End Frame")
 
-    upload_parser_panel_1 = upload_parser.add_argument_group('Upload Rock Predictions',
-                                                             'Provide your TATOR API Token, and specify the '
-                                                             'Media (by ID) and frames to make segments for',
-                                                             gooey_options={'show_border': True})
+            with gr.Group():
+                gr.Markdown("## Model Parameters")
+                conf = gr.Slider(label="Confidence Threshold", minimum=0, maximum=1, value=0.5)
+                iou = gr.Slider(label="IoU Threshold", minimum=0, maximum=1, value=0.7)
+                model_weights = gr.File(label="Model Weights")
 
-    upload_parser_panel_1.add_argument("--token", required=True, type=str,
-                                       default=os.getenv("TATOR_TOKEN"),
-                                       metavar='Token',
-                                       help="TATOR API Token",
-                                       widget="PasswordField")
+            run_button = gr.Button("Run")
+            output = gr.Textbox(label="Output", lines=10)
 
-    upload_parser_panel_1.add_argument('--remember_token', action="store_false",
-                                       metavar="Remember Token",
-                                       help='Store Token as a Local Environmental Variable',
-                                       widget="BlockCheckbox")
+        run_button.click(
+            run_rock_algorithm,
+            inputs=[token, remember_token, project_id, media_id, start_at, end_at, conf, iou, model_weights],
+            outputs=output
+        )
 
-    upload_parser_panel_1.add_argument("--project_id", required=True, type=int,
-                                       metavar='Project ID',
-                                       default=155,
-                                       help="ID for the Project")
-
-    upload_parser_panel_1.add_argument("--media_id", required=True, type=int,
-                                       metavar='Media ID',
-                                       help="ID for the Media (video)")
-
-    upload_parser_panel_1.add_argument("--start_at", required=True, type=int,
-                                       metavar='Start Frame',
-                                       help="Starting Frame")
-
-    upload_parser_panel_1.add_argument("--end_at", required=True, type=int,
-                                       metavar='End Frame',
-                                       help="Ending Frame (inclusive)")
-
-    upload_parser_panel_2 = upload_parser.add_argument_group('Model Parameters',
-                                                             'Provide the path to the model (.pth) file',
-                                                             gooey_options={'show_border': True})
-
-    upload_parser_panel_2.add_argument("--conf", type=float, default=0.5,
-                                       metavar='Confidence Threshold',
-                                       help="Higher values filter less confident predictions; [0. - 1.]")
-
-    upload_parser_panel_2.add_argument("--iou", type=float, default=0.7,
-                                       metavar='IoU Threshold',
-                                       help="Lower values filter overlapping predictions; [0. - 1.]")
-
-    upload_parser_panel_2.add_argument("--model_weights", required=True,
-                                       metavar='Model Weights',
-                                       help="Path to Model Weights (.pt)",
-                                       widget="FileChooser")
-
-    args = upload_parser.parse_args()
-
-    try:
-
-        if not args.remember_token:
-            os.environ['TATOR_TOKEN'] = str(args.token)
-
-        # Initialize the TATOR operator given user criteria
-        tator_operator = TatorOperator(args.token,
-                                       args.project_id,
-                                       args.media_id,
-                                       args.start_at,
-                                       args.end_at)
-
-        # Create the config dict
-        config = {
-            "model_confidence_threshold": float(args.conf),
-            "iou_threshold": float(args.iou),
-            "smol": False,
-            "model_type": "yolov10",
-            "model_path": args.model_weights,
-            "sam_model_path": "sam_l.pt"
-        }
-
-        # Initialize the rock algorithm
-        rock_algo = RockAlgorithm(config)
-        rock_algo.initialize()
-
-        # Loop through each frame
-        for i, frame_idx in enumerate(range(int(args.start_at), int(args.end_at) + 1, 1)):
-            print(f"NOTE: Making predictions on frame {frame_idx}")
-            # Download the frame, get numpy array
-            frame = tator_operator.download_frame(frame_idx)
-            # Pass to rock algorithm
-            predictions = rock_algo.infer(frame)
-            # Upload to tator
-            tator_operator.upload_predictions(frame_idx, predictions)
-            # Update Gooey progress bar for user
-            print(f"progress: {i + 1}/{(args.end_at + 1) - args.start_at}")
-
-        print("Done.")
-
-    except Exception as e:
-        print(f"ERROR: Failed to complete inference!\n{e}")
-        print(traceback.format_exc())
+    app.queue()
+    app.launch()
 
 
 if __name__ == "__main__":
-    main()
+    launch_gui()
