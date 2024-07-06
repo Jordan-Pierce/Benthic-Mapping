@@ -10,6 +10,7 @@ import torch
 import supervision as sv
 from ultralytics import SAM
 from ultralytics import YOLO
+from ultralytics import RTDETR
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -54,8 +55,30 @@ class VideoInferencer:
         self.tracker = None
         self.slicer = None
 
+    def load_models(self):
+        """
+        Loads the models
+
+        :return:
+        """
+        try:
+            self.yolo_model = YOLO(self.source_weights)
+
+            self.box_annotator = sv.BoundingBoxAnnotator()
+            self.mask_annotator = sv.MaskAnnotator()
+            self.labeler = sv.LabelAnnotator()
+
+            if self.segment:
+                self.sam_model = SAM('sam_l.pt')
+
+            if self.track:
+                self.tracker = sv.ByteTrack()
+
+        except Exception as e:
+            raise Exception(f"ERROR: Could not load model!\n{e}")
+
     @staticmethod
-    def calculate_slice_parameters(width: int, height: int, slices_x: int = 2, slices_y: int = 2, overlap: float = 0.1):
+    def calculate_slice_parameters(width: int, height: int, slices_x: int = 2, slices_y: int = 2, overlap: float = 0.3):
         """
         Calculate slice parameters for video frames; defaults to 2x2, 10% overlap
 
@@ -77,37 +100,6 @@ class VideoInferencer:
 
         return (adjusted_slice_width, adjusted_slice_height), (overlap_ratio_w, overlap_ratio_h)
 
-    def slicer_callback(self, image_slice: np.ndarray):
-        """
-        Prepares a callback to be used with SAHI
-
-        :param image_slice:
-        :return:
-        """
-        results = self.yolo_model(image_slice)[0]
-        results = sv.Detections.from_ultralytics(results)
-        return results
-
-    def load_models(self):
-        """
-        Loads the models
-
-        :return:
-        """
-        try:
-            self.yolo_model = YOLO(self.source_weights)
-            self.sam_model = SAM('sam_l.pt')
-
-            self.box_annotator = sv.BoundingBoxAnnotator()
-            self.mask_annotator = sv.MaskAnnotator()
-            self.labeler = sv.LabelAnnotator()
-
-            if self.track:
-                self.tracker = sv.ByteTrack()
-
-        except Exception as e:
-            raise Exception(f"ERROR: Could not load model!\n{e}")
-
     def setup_slicer(self, video_info):
         """
         Creates the SAHI slicer to be used within slicer callback;
@@ -120,9 +112,76 @@ class VideoInferencer:
 
         self.slicer = sv.InferenceSlicer(callback=self.slicer_callback,
                                          slice_wh=slice_wh,
-                                         iou_threshold=0.10,
+                                         iou_threshold=0.50,
                                          overlap_ratio_wh=overlap_ratio_wh,
                                          overlap_filter_strategy=sv.OverlapFilter.NON_MAX_MERGE)
+
+    def slicer_callback(self, image_slice: np.ndarray):
+        """
+        Prepares a callback to be used with SAHI
+
+        :param image_slice:
+        :return:
+        """
+        results = self.yolo_model(image_slice, max_det=1000)[0]
+        results = sv.Detections.from_ultralytics(results)
+        return results
+
+    @staticmethod
+    def mask_image(image, masks):
+        """
+
+        :param image:
+        :param masks:
+        :return:
+        """
+        masked_image = image.copy()
+        for mask in masks:
+            masked_image[mask] = 0
+
+        return masked_image
+
+    def apply_smol(self, frame, detections):
+        """
+        Performs SAHI on a masked frame, where masked regions are areas
+        that have already been detected / segmented by initial inference.
+
+        :param frame:
+        :param detections:
+        :return:
+        """
+
+        if detections:
+            # Mask out the frame where previous detections were
+            masked_frame = self.mask_image(frame, detections.mask)
+            # Make predictions on the masked frame
+            smol_detections = self.slicer(masked_frame)
+
+            if self.segment:
+                # Get SAM masks for the smol detections (original frame)
+                smol_detections = self.apply_sam(frame, smol_detections)
+
+            if smol_detections:
+                # If any smol detections, merge
+                detections = sv.Detections.merge([detections, smol_detections])
+
+        return detections
+
+    def apply_sam(self, frame, detections):
+        """
+
+        :param frame:
+        :param detections:
+        :return:
+        """
+        if detections:
+            bboxes = detections.xyxy
+            masks = self.sam_model(frame, bboxes=bboxes)[0]
+            masks = masks.masks.data.cpu().numpy()
+
+            detections.mask = masks
+
+        return detections
 
     def run_inference(self):
         """
@@ -149,33 +208,41 @@ class VideoInferencer:
             for frame in tqdm(frame_generator, total=video_info.total_frames):
 
                 if self.start_at < f_idx < self.end_at:
-                    detections = self.yolo_model(frame, iou=self.iou, conf=self.conf, device=self.device)[0]
+
+                    # Get detections
+                    detections = self.yolo_model(frame,
+                                                 iou=self.iou,
+                                                 conf=self.conf,
+                                                 max_det=2500,
+                                                 device=self.device)[0]
+
                     detections = sv.Detections.from_ultralytics(detections)
 
-                    if self.smol:
-                        smol_detections = self.slicer(frame)
-                        detections = sv.Detections.merge([detections, smol_detections])
+                    # Perform segmentations
+                    if self.segment:
+                        detections = self.apply_sam(frame, detections)
 
-                    detections = detections.with_nms(self.iou, class_agnostic=True)
-                    detections = detections[detections.confidence > self.conf]
+                    # Perform smaller detections / segmentations
+                    if self.smol:
+                        detections = self.apply_smol(frame, detections)
+
+                    # Do NMS with all detections (bboxes)
+                    # detections = detections.with_nms(self.iou, class_agnostic=True)
 
                     # Prepare the labels
                     class_names = detections.data['class_name'].tolist()
                     confidences = detections.confidence.tolist()
                     labels = [f"{name} {conf:0.2f}" for name, conf in list(zip(class_names, confidences))]
 
-                    if self.segment:
-                        bboxes = detections.xyxy
-                        masks = self.sam_model(frame, bboxes=bboxes)[0]
-                        masks = masks.masks.data.cpu().numpy()
-                        detections.mask = masks
+                    # Track all detections
                     if self.track:
                         detections = self.tracker.update_with_detections(detections)
                         tracker_ids = detections.tracker_id.astype(str).tolist()
                         labels = [f"{t_id} {l}" for t_id, l in list(zip(tracker_ids, labels))]
 
+                    # Display frame, boxes, masks, labels, and rack
                     frame = self.mask_annotator.annotate(scene=frame, detections=detections)
-                    frame = self.box_annotator.annotate(scene=frame, detections=detections)
+                    # frame = self.box_annotator.annotate(scene=frame, detections=detections)
                     frame = self.labeler.annotate(scene=frame, detections=detections, labels=labels)
 
                     sink.write_frame(frame=frame)
