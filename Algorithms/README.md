@@ -38,6 +38,6 @@ In the terminal you should be provided with a local host address that if clicked
 
 ### Model Weights
 
-Download the latest version of the weights (.pth) by NOAA users:
+Download the latest version of the weights (.pth), available to NOAA users:
 - YOLO - [06/26/2024](https://drive.google.com/file/d/1vcsO9rQr0lScHuBLISBR72Xgr1kpYIec/view?usp=drive_link)
 - RTDETR - [06/30/2024](https://drive.google.com/file/d/1qotY6xEF5Y3cOknseGROEqtpUa3AnVZ2/view?usp=drive_link)
