@@ -7,6 +7,7 @@ import torch
 import supervision as sv
 from ultralytics import SAM
 from ultralytics import YOLO
+from ultralytics import RTDETR
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -128,8 +129,13 @@ class RockAlgorithm:
             raise Exception(f"ERROR: Model weights not found in ({model_path})!")
 
         try:
-            # Load the model weights
-            self.yolo_model = YOLO(model_path)
+            if "yolo" in self.config['model_type'].lower():
+                # Load the model weights
+                self.yolo_model = YOLO(model_path)
+            elif "rtdetr" in self.config['model_type'].lower():
+                self.yolo_model = RTDETR(model_path)
+            else:
+                raise Exception(f"ERROR: Model type {self.config['model_type']} not recognized!")
 
             # Load the SAM model (sam_b, sam_l, sam_h)
             # This will download the file if it doesn't exist

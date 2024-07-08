@@ -13,7 +13,7 @@ from Rocks.rock_algorithm import RockAlgorithm
 # ----------------------------------------------------------------------------------------------------------------------
 
 class TatorOperator:
-    def __init__(self, token, project_id, media_id, start_at, end_at):
+    def __init__(self, token, project_id, media_id):
         """
 
         :param token:
@@ -25,8 +25,6 @@ class TatorOperator:
         self.token = token
         self.project_id = project_id
         self.media_id = media_id
-        self.start_at = start_at
-        self.end_at = end_at
 
         try:
             self.api = tator.get_api(host='https://cloud.tator.io', token=token)
@@ -130,6 +128,7 @@ def run_rock_algorithm(token,
                        frame_ranges,
                        conf,
                        iou,
+                       model_type,
                        model_weights,
                        progress=gr.Progress()):
     """
@@ -142,6 +141,7 @@ def run_rock_algorithm(token,
     :param frame_ranges: String specifying frame ranges to process
     :param conf: Confidence threshold
     :param iou: IoU threshold
+    :param model_type: Type of model (YOLO, or RTDETR)
     :param model_weights: Path to model weights file
     :param progress: Gradio progress bar
     :return: Status message
@@ -156,7 +156,7 @@ def run_rock_algorithm(token,
             "model_confidence_threshold": float(conf),
             "iou_threshold": float(iou),
             "smol": False,
-            "model_type": "yolov10",
+            "model_type": model_type,
             "model_path": model_weights,
             "sam_model_path": "sam_l.pt"
         }
@@ -226,6 +226,9 @@ def launch_gui():
                             "Higher values mean less overlap allowed between detections.")
                 iou = gr.Slider(label="IoU Threshold", minimum=0, maximum=1, value=0.7)
 
+                gr.Markdown("Specify the model architecture, either YOLO or RTDETR. ")
+                model_type = gr.Radio(choices=["YOLO", "RTDETR"], value="YOLO", label="Model Type")
+
                 gr.Markdown("Upload the file containing the trained model weights.")
                 model_weights = gr.File(label="Model Weights")
 
@@ -236,7 +239,7 @@ def launch_gui():
 
         run_button.click(
             run_rock_algorithm,
-            inputs=[token, remember_token, project_id, media_id, frame_ranges, conf, iou, model_weights],
+            inputs=[token, remember_token, project_id, media_id, frame_ranges, conf, iou, model_type, model_weights],
             outputs=output
         )
 

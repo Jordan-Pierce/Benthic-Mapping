@@ -31,6 +31,7 @@ In the terminal you should be provided with a local host address that if clicked
 - `Media ID`: Enter the ID of the media file you want to process.
 - `Confidence Threshold`: Set the confidence threshold for object detection; Higher values mean stricter detection.
 - `IoU Threshold`: Set the Intersection over Union threshold for object detection; Higher values mean less overlap allowed between detections.
+- `Model Type`: Select the architecture of the model corresponding to the model weights; either YOLO or RTDETR
 - `Model Weights`: Upload the file containing the trained model weights;
 - `Output`: The results and any messages from the algorithm will be displayed here.
 
@@ -38,4 +39,5 @@ In the terminal you should be provided with a local host address that if clicked
 ### Model Weights
 
 Download the latest version of the weights (.pth) by NOAA users:
-- [06/26/2024](https://drive.google.com/file/d/1vcsO9rQr0lScHuBLISBR72Xgr1kpYIec/view?usp=drive_link)
+- YOLO - [06/26/2024](https://drive.google.com/file/d/1vcsO9rQr0lScHuBLISBR72Xgr1kpYIec/view?usp=drive_link)
+- RTDETR - [06/30/2024](https://drive.google.com/file/d/1qotY6xEF5Y3cOknseGROEqtpUa3AnVZ2/view?usp=drive_link)
