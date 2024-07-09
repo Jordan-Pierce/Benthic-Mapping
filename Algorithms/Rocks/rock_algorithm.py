@@ -13,6 +13,50 @@ from ultralytics import RTDETR
 # ----------------------------------------------------------------------------------------------------------------------
 # Functions
 # ----------------------------------------------------------------------------------------------------------------------
+def mask_image(image, masks):
+    """
+
+    :param image:
+    :param masks:
+    :return:
+    """
+    masked_image = image.copy()
+    for mask in masks:
+        masked_image[mask] = 0
+
+    return masked_image
+
+
+def calculate_slice_parameters(height, width, slices_x=2, slices_y=2, overlap_percentage=0.3):
+    """
+    Calculates the slice parameters when using SAHI.
+
+    :param height:
+    :param width:
+    :param slices_x:
+    :param slices_y:
+    :param overlap_percentage:
+    :return:
+    """
+    # Calculate base slice dimensions
+    slice_width = width // slices_x
+    slice_height = height // slices_y
+
+    # Calculate overlap
+    overlap_width = int(slice_width * overlap_percentage)
+    overlap_height = int(slice_height * overlap_percentage)
+
+    # Adjust slice dimensions to include overlap
+    adjusted_slice_width = slice_width + overlap_width
+    adjusted_slice_height = slice_height + overlap_height
+
+    # Calculate overlap ratios
+    overlap_ratio_w = overlap_width / adjusted_slice_width
+    overlap_ratio_h = overlap_height / adjusted_slice_height
+
+    return (adjusted_slice_width, adjusted_slice_height), (overlap_ratio_w, overlap_ratio_h)
+
+
 def mask_to_polygons(masks):
     """
 
@@ -65,35 +109,9 @@ def polygons_to_points(polygons, image):
     return normalized_polygons
 
 
-def calculate_slice_parameters(height, width, slices_x=2, slices_y=2, overlap_percentage=0.1):
-    """
-    Calculates the slice parameters when using SAHI.
-
-    :param height:
-    :param width:
-    :param slices_x:
-    :param slices_y:
-    :param overlap_percentage:
-    :return:
-    """
-    # Calculate base slice dimensions
-    slice_width = width // slices_x
-    slice_height = height // slices_y
-
-    # Calculate overlap
-    overlap_width = int(slice_width * overlap_percentage)
-    overlap_height = int(slice_height * overlap_percentage)
-
-    # Adjust slice dimensions to include overlap
-    adjusted_slice_width = slice_width + overlap_width
-    adjusted_slice_height = slice_height + overlap_height
-
-    # Calculate overlap ratios
-    overlap_ratio_w = overlap_width / adjusted_slice_width
-    overlap_ratio_h = overlap_height / adjusted_slice_height
-
-    return (adjusted_slice_width, adjusted_slice_height), (overlap_ratio_w, overlap_ratio_h)
-
+# ----------------------------------------------------------------------------------------------------------------------
+# Classes
+# ----------------------------------------------------------------------------------------------------------------------
 
 class RockAlgorithm:
     """
@@ -146,6 +164,24 @@ class RockAlgorithm:
 
         print(f"NOTE: Successfully loaded weights {model_path}")
 
+    def setup_slicer(self, frame):
+        """
+        Creates the SAHI slicer to be used within slicer callback;
+        uses the video dimensions to determine slicer parameters.
+
+        :param frame:
+        :return:
+        """
+        if self.slicer is None:
+
+            slice_wh, overlap_ratio_wh = calculate_slice_parameters(frame.shape[0], frame.shape[1])
+
+            self.slicer = sv.InferenceSlicer(callback=self.slicer_callback,
+                                             slice_wh=slice_wh,
+                                             iou_threshold=0.25,
+                                             overlap_ratio_wh=overlap_ratio_wh,
+                                             overlap_filter_strategy=sv.OverlapFilter.NON_MAX_MERGE)
+
     @torch.no_grad()
     def slicer_callback(self, image_slice):
         """
@@ -160,6 +196,49 @@ class RockAlgorithm:
         results = sv.Detections.from_ultralytics(results)
 
         return results
+
+    def apply_smol(self, frame, detections):
+        """
+        Performs SAHI on a masked frame, where masked regions are areas
+        that have already been detected / segmented by initial inference.
+
+        :param frame:
+        :param detections:
+        :return:
+        """
+        if self.slicer is None:
+            # Setup on the first frame
+            self.setup_slicer(frame)
+
+        if detections:
+            # Mask out the frame where previous detections were
+            masked_frame = mask_image(frame, detections.mask)
+            # Make predictions on the masked frame
+            smol_detections = self.slicer(masked_frame)
+            # Get SAM masks for the smol detections (original frame)
+            smol_detections = self.apply_sam(masked_frame, smol_detections)
+
+            if smol_detections:
+                # If any smol detections, merge
+                detections = sv.Detections.merge([detections, smol_detections])
+
+        return detections
+
+    def apply_sam(self, frame, detections):
+        """
+
+        :param frame:
+        :param detections:
+        :return:
+        """
+        if detections:
+            # Pass bboxes to SAM, store masks in detections
+            bboxes = detections.xyxy
+            masks = self.sam_model(frame, bboxes=bboxes)[0]
+            masks = masks.masks.data.cpu().numpy()
+            detections.mask = masks.astype(np.uint8)
+
+        return detections
 
     @torch.no_grad()
     def infer(self, original_frame) -> list:
@@ -185,36 +264,16 @@ class RockAlgorithm:
 
         # Convert results to supervision standards
         detections = sv.Detections.from_ultralytics(detections)
+        # Perform segmentations with bboxes
+        detections = self.apply_sam(original_frame, detections)
 
         if self.config["smol"]:
+            # Perform detections / segmentations using SAHI
+            detections = self.apply_smol(original_frame, detections)
 
-            # For the first image, calculate the SAHI parameters
-            if self.slicer is None:
-                # Get the image dimensions
-                frame_height, frame_width = original_frame.shape[:2]
-                # Get the slicer parameter values (defaults 2 x 2 with 10 % overlap)
-                slice_wh, overlap_ratio_wh = calculate_slice_parameters(frame_height, frame_width)
-                # Create the slicer
-                self.slicer = sv.InferenceSlicer(callback=self.slicer_callback,
-                                                 slice_wh=slice_wh,
-                                                 iou_threshold=0.10,
-                                                 overlap_ratio_wh=overlap_ratio_wh,
-                                                 overlap_filter_strategy=sv.OverlapFilter.NON_MAX_MERGE)
-
-            # Run the frame through the slicer
-            smol_detections = self.slicer(original_frame)
-            # Merge the results
-            detections = sv.Detections.merge([detections, smol_detections])
-
-        # Perform NMS, and filter based on confidence scores
+        # Do NMM / NMS with all detections (bboxes)
+        detections = detections.with_nmm(iou, class_agnostic=True)
         detections = detections.with_nms(iou, class_agnostic=True)
-        detections = detections[detections.confidence > conf]
-
-        # Predict instance segmentation masks using SAM
-        bboxes = detections.xyxy
-        masks = self.sam_model(original_frame, bboxes=bboxes, verbose=False)[0]
-        masks = masks.masks.data.cpu().numpy()
-        detections.mask = masks.astype(np.uint8)
 
         # Convert to polygons
         polygons = mask_to_polygons(detections.mask)

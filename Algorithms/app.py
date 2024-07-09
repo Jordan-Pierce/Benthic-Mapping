@@ -49,9 +49,9 @@ class TatorOperator:
             for points in polygon_points:
                 # Specify spec
                 spec = {
-                    'type': 460,                      # rock poly type
+                    'type': 460,  # rock poly type
                     'media_id': self.media_id,
-                    'version_id': 546,                # rock anno ver
+                    'version_id': 546,  # rock anno ver
                     'points': points,
                     'frame': frame_idx,
                     'attributes': {"Label": "Rock"},
@@ -128,6 +128,7 @@ def run_rock_algorithm(token,
                        frame_ranges,
                        conf,
                        iou,
+                       smol,
                        model_type,
                        model_weights,
                        progress=gr.Progress()):
@@ -141,6 +142,7 @@ def run_rock_algorithm(token,
     :param frame_ranges: String specifying frame ranges to process
     :param conf: Confidence threshold
     :param iou: IoU threshold
+    :param smol: Use SAHI
     :param model_type: Type of model (YOLO, or RTDETR)
     :param model_weights: Path to model weights file
     :param progress: Gradio progress bar
@@ -155,9 +157,9 @@ def run_rock_algorithm(token,
         config = {
             "model_confidence_threshold": float(conf),
             "iou_threshold": float(iou),
-            "smol": False,
-            "model_type": model_type,
-            "model_path": model_weights,
+            "smol": bool(smol),
+            "model_type": str(model_type),
+            "model_path": str(model_weights),
             "sam_model_path": "sam_l.pt"
         }
 
@@ -219,15 +221,21 @@ def launch_gui():
 
             with gr.Group():
                 gr.Markdown("## Model Parameters")
-                gr.Markdown("Set the confidence threshold for object detection. Higher values mean stricter detection.")
-                conf = gr.Slider(label="Confidence Threshold", minimum=0, maximum=1, value=0.5)
 
-                gr.Markdown("Set the Intersection over Union threshold for object detection. "
-                            "Higher values mean less overlap allowed between detections.")
-                iou = gr.Slider(label="IoU Threshold", minimum=0, maximum=1, value=0.7)
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("Higher values mean stricter detection.")
+                        conf = gr.Slider(label="Confidence Threshold", minimum=0, maximum=1, value=0.5)
 
-                gr.Markdown("Specify the model architecture, either YOLO or RTDETR. ")
-                model_type = gr.Radio(choices=["YOLO", "RTDETR"], value="YOLO", label="Model Type")
+                        gr.Markdown("Use SAHI to detect smaller instances (slower).")
+                        smol = gr.Radio(choices=[True, False], label="SMOL Mode", value=False)
+
+                    with gr.Column():
+                        gr.Markdown("Higher values mean less overlap allowed between detections.")
+                        iou = gr.Slider(label="IoU Threshold", minimum=0, maximum=1, value=0.7)
+
+                        gr.Markdown("Specify the model architecture, either YOLO or RTDETR.")
+                        model_type = gr.Radio(choices=["YOLO", "RTDETR"], value="RTDETR", label="Model Type")
 
                 gr.Markdown("Upload the file containing the trained model weights.")
                 model_weights = gr.File(label="Model Weights")
@@ -239,7 +247,16 @@ def launch_gui():
 
         run_button.click(
             run_rock_algorithm,
-            inputs=[token, remember_token, project_id, media_id, frame_ranges, conf, iou, model_type, model_weights],
+            inputs=[token,
+                    remember_token,
+                    project_id,
+                    media_id,
+                    frame_ranges,
+                    conf,
+                    iou,
+                    smol,
+                    model_type,
+                    model_weights],
             outputs=output
         )
 
