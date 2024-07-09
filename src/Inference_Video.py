@@ -14,15 +14,58 @@ from ultralytics import RTDETR
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+# Functions
+# ----------------------------------------------------------------------------------------------------------------------
+
+def calculate_slice_parameters(width: int, height: int, slices_x: int = 2, slices_y: int = 2, overlap: float = 0.3):
+    """
+    Calculate slice parameters for video frames; defaults to 2x2, 10% overlap
+
+    :param width:
+    :param height:
+    :param slices_x:
+    :param slices_y:
+    :param overlap:
+    :return:
+    """
+    slice_width = width // slices_x
+    slice_height = height // slices_y
+    overlap_width = int(slice_width * overlap)
+    overlap_height = int(slice_height * overlap)
+    adjusted_slice_width = slice_width + overlap_width
+    adjusted_slice_height = slice_height + overlap_height
+    overlap_ratio_w = overlap_width / adjusted_slice_width
+    overlap_ratio_h = overlap_height / adjusted_slice_height
+
+    return (adjusted_slice_width, adjusted_slice_height), (overlap_ratio_w, overlap_ratio_h)
+
+
+def mask_image(image, masks):
+    """
+
+    :param image:
+    :param masks:
+    :return:
+    """
+    masked_image = image.copy()
+    for mask in masks:
+        masked_image[mask] = 0
+
+    return masked_image
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
 
 class VideoInferencer:
-    def __init__(self, weights_path: str, video_path: str, output_dir: str, start_at: int, end_at: int,
-                 conf: float, iou: float, track: bool, segment: bool, smol: bool, show: bool):
+    def __init__(self, weights_path: str, model_type: str, video_path: str, output_dir: str,
+                 start_at: int, end_at: int, conf: float, iou: float,
+                 track: bool, segment: bool, smol: bool, show: bool):
         """
 
         :param weights_path:
+        :param model_type:
         :param video_path:
         :param output_dir:
         :param start_at:
@@ -33,8 +76,9 @@ class VideoInferencer:
         :param smol:
         :param show:
         """
-        self.source_weights = weights_path
-        self.source_video = video_path
+        self.weights_path = weights_path
+        self.model_type = model_type
+        self.video_path = video_path
         self.output_dir = output_dir
         self.start_at = start_at
         self.end_at = end_at
@@ -62,7 +106,13 @@ class VideoInferencer:
         :return:
         """
         try:
-            self.yolo_model = YOLO(self.source_weights)
+
+            if "yolo" in self.model_type.lower():
+                self.yolo_model = YOLO(self.weights_path)
+            elif "rtdetr" in self.model_type.lower():
+                self.yolo_model = RTDETR(self.weights_path)
+            else:
+                raise ValueError(f"Model type {self.model_type} not supported")
 
             self.box_annotator = sv.BoundingBoxAnnotator()
             self.mask_annotator = sv.MaskAnnotator()
@@ -77,38 +127,15 @@ class VideoInferencer:
         except Exception as e:
             raise Exception(f"ERROR: Could not load model!\n{e}")
 
-    @staticmethod
-    def calculate_slice_parameters(width: int, height: int, slices_x: int = 2, slices_y: int = 2, overlap: float = 0.3):
-        """
-        Calculate slice parameters for video frames; defaults to 2x2, 10% overlap
-
-        :param width:
-        :param height:
-        :param slices_x:
-        :param slices_y:
-        :param overlap:
-        :return:
-        """
-        slice_width = width // slices_x
-        slice_height = height // slices_y
-        overlap_width = int(slice_width * overlap)
-        overlap_height = int(slice_height * overlap)
-        adjusted_slice_width = slice_width + overlap_width
-        adjusted_slice_height = slice_height + overlap_height
-        overlap_ratio_w = overlap_width / adjusted_slice_width
-        overlap_ratio_h = overlap_height / adjusted_slice_height
-
-        return (adjusted_slice_width, adjusted_slice_height), (overlap_ratio_w, overlap_ratio_h)
-
-    def setup_slicer(self, video_info):
+    def setup_slicer(self, frame):
         """
         Creates the SAHI slicer to be used within slicer callback;
         uses the video dimensions to determine slicer parameters.
 
-        :param video_info:
+        :param frame:
         :return:
         """
-        slice_wh, overlap_ratio_wh = self.calculate_slice_parameters(video_info.width, video_info.height)
+        slice_wh, overlap_ratio_wh = calculate_slice_parameters(frame.shape[0], frame.shape[1])
 
         self.slicer = sv.InferenceSlicer(callback=self.slicer_callback,
                                          slice_wh=slice_wh,
@@ -116,6 +143,7 @@ class VideoInferencer:
                                          overlap_ratio_wh=overlap_ratio_wh,
                                          overlap_filter_strategy=sv.OverlapFilter.NON_MAX_MERGE)
 
+    @torch.no_grad()
     def slicer_callback(self, image_slice: np.ndarray):
         """
         Prepares a callback to be used with SAHI
@@ -127,20 +155,6 @@ class VideoInferencer:
         results = sv.Detections.from_ultralytics(results)
         return results
 
-    @staticmethod
-    def mask_image(image, masks):
-        """
-
-        :param image:
-        :param masks:
-        :return:
-        """
-        masked_image = image.copy()
-        for mask in masks:
-            masked_image[mask] = 0
-
-        return masked_image
-
     def apply_smol(self, frame, detections):
         """
         Performs SAHI on a masked frame, where masked regions are areas
@@ -150,16 +164,18 @@ class VideoInferencer:
         :param detections:
         :return:
         """
+        if self.slicer is None:
+            self.setup_slicer(frame)
 
         if detections:
             # Mask out the frame where previous detections were
-            masked_frame = self.mask_image(frame, detections.mask)
+            masked_frame = mask_image(frame, detections.mask)
             # Make predictions on the masked frame
             smol_detections = self.slicer(masked_frame)
 
             if self.segment:
                 # Get SAM masks for the smol detections (original frame)
-                smol_detections = self.apply_sam(frame, smol_detections)
+                smol_detections = self.apply_sam(masked_frame, smol_detections)
 
             if smol_detections:
                 # If any smol detections, merge
@@ -175,9 +191,11 @@ class VideoInferencer:
         :return:
         """
         if detections:
+            # Pass bboxes to SAM, store masks in detections
             bboxes = detections.xyxy
             masks = self.sam_model(frame, bboxes=bboxes)[0]
             masks = masks.masks.data.cpu().numpy()
+            detections.mask = masks.astype(np.uint8)
 
             detections.mask = masks
 
@@ -190,14 +208,12 @@ class VideoInferencer:
         :return:
         """
         os.makedirs(self.output_dir, exist_ok=True)
-        target_video_path = f"{self.output_dir}/{os.path.basename(self.source_video)}"
-        frame_generator = sv.get_video_frames_generator(source_path=self.source_video)
-        video_info = sv.VideoInfo.from_video_path(video_path=self.source_video)
+        target_video_path = f"{self.output_dir}/{os.path.basename(self.video_path)}"
+        frame_generator = sv.get_video_frames_generator(source_path=self.video_path)
+        video_info = sv.VideoInfo.from_video_path(video_path=self.video_path)
 
         self.load_models()
 
-        if self.smol:
-            self.setup_slicer(video_info)
         if self.start_at <= 0:
             self.start_at = 0
         if self.end_at <= -1:
@@ -226,8 +242,9 @@ class VideoInferencer:
                     if self.smol:
                         detections = self.apply_smol(frame, detections)
 
-                    # Do NMS with all detections (bboxes)
-                    # detections = detections.with_nms(self.iou, class_agnostic=True)
+                    # Do NMM / NMS with all detections (bboxes)
+                    detections = detections.with_nmm(self.iou, class_agnostic=True)
+                    detections = detections.with_nms(self.iou, class_agnostic=True)
 
                     # Prepare the labels
                     class_names = detections.data['class_name'].tolist()
@@ -242,7 +259,7 @@ class VideoInferencer:
 
                     # Display frame, boxes, masks, labels, and rack
                     frame = self.mask_annotator.annotate(scene=frame, detections=detections)
-                    # frame = self.box_annotator.annotate(scene=frame, detections=detections)
+                    frame = self.box_annotator.annotate(scene=frame, detections=detections)
                     frame = self.labeler.annotate(scene=frame, detections=detections, labels=labels)
 
                     sink.write_frame(frame=frame)
@@ -268,6 +285,9 @@ def main():
 
     parser.add_argument("--weights_path", required=True, type=str,
                         help="Path to the source weights file")
+
+    parser.add_argument("--model_type", required=True, type=str,
+                        help="Model architecture; either YOLO or RTDETR")
 
     parser.add_argument("--video_path", required=True, type=str,
                         help="Path to the source video file")
@@ -304,6 +324,7 @@ def main():
     try:
         inference = VideoInferencer(
             weights_path=args.weights_path,
+            model_type=args.model_type,
             video_path=args.video_path,
             output_dir=args.output_dir,
             start_at=args.start_at,
