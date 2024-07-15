@@ -22,6 +22,15 @@ python Algorithms/app.py
 In the terminal you should be provided with a local host address that if clicked on, will open your web-browser to the 
 `gradio` interface.
 
+```bash
+# cmd
+
+cd path/to/Benthic-Mapping
+
+conda activate benthic-mapping
+python Algorithms/app.py
+```
+
 ## Parameters
 
 - `Token`: [TATOR API Token](https://www.tator.io/docs/developer-guide/getting-started/get-an-api-token); This is required for authentication.
