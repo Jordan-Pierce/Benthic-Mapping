@@ -2,20 +2,15 @@ import os
 import shutil
 import argparse
 import traceback
-from tqdm import tqdm
 import concurrent.futures
-from typing import List, Dict
+from functools import partial
 
 import tator
-
-import cv2
-import numpy as np
 import pandas as pd
 
 import supervision as sv
 from autodistill import helpers
 
-from Common import get_now
 from Common import render_dataset
 
 
@@ -24,201 +19,252 @@ from Common import render_dataset
 # ----------------------------------------------------------------------------------------------------------------------
 
 class DataDownloader:
-    def __init__(self, api_token: str, project_id: int, search_string: str, dataset_name: str, output_dir: str):
+    def __init__(self,
+                 api_token: str,
+                 project_id: int,
+                 search_string: str,
+                 dataset_name: str,
+                 code_as: str,
+                 output_dir: str):
         """
 
         :param api_token:
         :param project_id:
         :param search_string:
         :param dataset_name:
+        :param code_as:
         :param output_dir:
         """
-        self.api = self._authenticate(api_token)
+        self.api = None
+
+        self.token = api_token
         self.project_id = project_id
         self.search_string = search_string
 
         self.dataset_name = dataset_name
+        self.code_as = code_as
 
-        self.root = output_dir
-        self.data_dir = f"{self.root}/Data/Training_Data"
-        self.dataset_dir = f"{self.data_dir}/{get_now()}_{self.dataset_name}"
+        self.dataset_dir = f"{output_dir}/{self.dataset_name}"
 
-        self._setup_directories()
+        self.query = None
+        self.data = None
+        self.classes = None
+        self.class_to_id = None
 
-    @staticmethod
-    def _authenticate(api_token: str):
+        self.authenticate()
+        self.create_directories()
+        self.save_query_string()
+
+    def authenticate(self):
         """
 
-        :param api_token:
         :return:
         """
         try:
-            api = tator.get_api(host='https://cloud.tator.io', token=api_token)
-            print(f"NOTE: Authentication successful for {api.whoami().username}")
-            return api
+
+            self.api = tator.get_api(host='https://cloud.tator.io', token=self.token)
+            print(f"NOTE: Authentication successful for {self.api.whoami().username}")
+
         except Exception as e:
             raise Exception(f"ERROR: Could not authenticate with provided API Token\n{e}")
 
-    def _setup_directories(self):
+    def create_directories(self):
         """
 
         :return:
         """
+        os.makedirs(self.dataset_dir, exist_ok=True)
         os.makedirs(f"{self.dataset_dir}/images", exist_ok=True)
+        os.makedirs(f"{self.dataset_dir}/labels", exist_ok=True)
 
-    def _save_query(self):
+    def save_query_string(self):
         """
         Write the search string to text file
 
         :return:
         """
         try:
-            file_path = f"{self.dataset_dir}/search_string.txt"
-            with open(file_path, 'w') as file:
+
+            with open(f"{self.dataset_dir}/search_string.txt", 'w') as file:
                 file.write(self.search_string)
+
         except Exception as e:
             print(f"WARNING: An error occurred while writing search string to file:\n{e}")
 
-    def download_frame(self, media, frame_id: int):
+    def write_yaml(self):
         """
+        Writes a YOLO-formatted dataset yaml file
 
-        :param media:
-        :param frame_id:
         :return:
         """
-        frame_path = f"{self.dataset_dir}/images/{str(media.id)}_{str(frame_id)}.jpg"
-        if not os.path.exists(frame_path):
-            temp = self.api.get_frame(id=media.id, tile=f"{media.width}x{media.height}", frames=[int(frame_id)])
-            shutil.move(temp, frame_path)
-        return frame_id, frame_path
+        self.classes = self.data['label'].unique().tolist()
+        self.class_to_id = {class_name: i for i, class_name in enumerate(self.classes)}
 
-    def download_frames(self, media, frames: List[int]):
+        # Create data.yaml
+        with open(f"{self.dataset_dir}/data.yaml", 'w') as f:
+            f.write(f"names: {self.classes}\n")
+            f.write(f"nc: {len(self.classes)}\n")
+            f.write(f"train: {os.path.join(self.dataset_dir, 'images')}\n")
+            f.write(f"val: {os.path.join(self.dataset_dir, 'images')}\n")
+
+    def process_query(self):
         """
+        Process the query by restructuring the data into a DataFrame;
+        each row contains a localization, and the media it belongs to.
 
-        :param media:
-        :param frames:
-        :return:
-        """
-        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() - 1) as executor:
-            future_to_frame = {executor.submit(self.download_frame, media, frame): frame for frame in frames}
-            return [future.result()[1] for future in concurrent.futures.as_completed(future_to_frame)]
-
-    @staticmethod
-    def process_query(query):
-        """
-
-        :param query:
-        :return:
+        :return: None
         """
         data = []
-        for q in query:
 
-            if 'ScientificName' in q.attributes:
-                media = q.media
-                frame = q.frame
-                frame_name = f"{q.media}_{q.frame}.jpg"
-                x = q.x
-                y = q.y
-                width = q.width
-                height = q.height
+        for q in self.query:
+            frame_name = f"{q.media}_{q.frame}.jpg"
+            label_name = f"{q.media}_{q.frame}.txt"
 
-                try:
-                    label = str(q.attributes['ScientificName'])
-                except:
-                    label = 'Unknown'
+            try:
+                original_label = str(q.attributes['ScientificName'])
+            except Exception as e:
+                original_label = 'Unknown'
 
-                data.append([media, frame_name, frame, x, y, width, height, label])
+            # Encode the label as something different
+            label = self.code_as if self.code_as else original_label
 
-        return pd.DataFrame(data, columns=['media', 'name', 'frame', 'x', 'y', 'width', 'height', 'label'])
+            # Create a dictionary for each row
+            row_dict = {
+                'media': q.media,
+                'frame': q.frame,
+                'frame_name': frame_name,
+                'frame_path': f"{self.dataset_dir}/images/{frame_name}",
+                'label_name': label_name,
+                'label_path': f"{self.dataset_dir}/labels/{label_name}",
+                'x': q.x,
+                'y': q.y,
+                'width': q.width,
+                'height': q.height,
+                'label': label
+            }
 
-    def process_media(self, media_id: int, data: pd.DataFrame):
+            # Add the dictionary to the list
+            data.append(row_dict)
+
+        # Create DataFrame from the list of dictionaries
+        self.data = pd.DataFrame(data).sample(n=200)
+        self.data.dropna(axis=0, how='any', inplace=True)
+        self.data.reset_index(drop=True, inplace=True)
+
+    def download_frames(self):
+        """
+        Multithreading function for downloading multiple frames in parallel.
+
+        """
+        # Get unique frame paths
+        paths = self.data['frame_path'].unique()
+
+        # Create a partial function with self as the first argument
+        func = partial(self.download_frame)
+
+        # Use ThreadPoolExecutor for parallel downloads
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            # Submit download tasks for each unique frame path
+            futures = [executor.submit(func, self.data[self.data['frame_path'] == path].head(1)) for path in paths]
+
+            # Wait for all tasks to complete
+            concurrent.futures.wait(futures)
+
+    def download_frame(self, row):
+        """
+        Takes in a row from a dataframe, downloads corresponding
+        frame and saves it to disk.
+
+        :param row:
+        """
+        # Download the frame if it doesn't already exist
+        if not os.path.exists(row['frame_path'].item()):
+            try:
+                temp = self.api.get_frame(id=row['media'].item(),
+                                          tile=f"{row['width'].item()}x{row['height'].item()}",
+                                          frames=[int(row['frame'].item())])
+
+                shutil.move(temp, row['frame_path'].item())
+                print(f"Downloaded: {row['frame_path'].item()}")
+            except Exception as e:
+                print(f"Error downloading {row['frame_path'].item()}: {str(e)}")
+
+    def write_labels(self):
+        """
+        Write YOLO-formatted labels to text files.
+
+        :return
+        """
+        for label_path in self.data['label_path'].unique():
+            # Get all labels that correspond to this label / image file
+            label_df = self.data[self.data['label_path'] == label_path]
+
+            yolo_annotations = []
+            for _, row in label_df.iterrows():
+                class_id = self.class_to_id[row['label']]
+                x_center = (row['x'] + row['width'] / 2)
+                y_center = (row['y'] + row['height'] / 2)
+                w = row['width']
+                h = row['height']
+
+                # Convert to YOLO format (normalized)
+                x_center /= 1.0
+                y_center /= 1.0
+                w /= 1.0
+                h /= 1.0
+
+                # Create YOLO-formatted annotation string
+                yolo_annotation = f"{class_id} {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}"
+                yolo_annotations.append(yolo_annotation)
+
+            # Save annotations
+            with open(label_path, 'w') as f:
+                f.write('\n'.join(yolo_annotations))
+
+            print("Downloaded: ", label_path)
+
+    def render(self):
         """
 
-        :param media_id:
-        :param data:
         :return:
         """
-        media = self.api.get_media(id=int(media_id))
-        subset = data[data['media'] == media_id].copy()
-        subset.loc[:, 'media_width'] = media.width
-        subset.loc[:, 'media_height'] = media.height
-        frames = self.download_frames(media, subset['frame'].unique())
-        return subset, frames
+        try:
+            dataset = sv.DetectionDataset.from_yolo(
+                images_directory_path=f"{self.dataset_dir}/images",
+                annotations_directory_path=f"{self.dataset_dir}/labels",
+                data_yaml_path=f"{self.dataset_dir}/data.yaml",
+            )
 
-    @staticmethod
-    def process_frame(frame_path: str, data: pd.DataFrame, class_to_id: Dict[str, int]):
-        """
-        Process a single frame and create detections.
+            render_dataset(dataset, f"{self.dataset_dir}/render")
 
-        :param frame_path: Path to the frame image
-        :param data: DataFrame containing annotation data
-        :param class_to_id: Dictionary mapping class names to class IDs
-        :return: Tuple of frame name and dict containing image and detection
-        """
-        name = os.path.basename(frame_path)
-        subset = data[data['name'] == name]
-        width, height = subset['media_width'].iloc[0], subset['media_height'].iloc[0]
+        except Exception as e:
+            print(f"ERROR: Failed to render dataset\n{e}")
 
-        xyxy = np.column_stack([
-            subset['x'].values * width,
-            subset['y'].values * height,
-            (subset['x'].values + subset['width'].values) * width,
-            (subset['y'].values + subset['height'].values) * height
-        ])
-
-        class_ids = np.array([class_to_id[label] for label in subset['label']], dtype=int)
-
-        detection = sv.Detections(
-            xyxy=xyxy.astype(int),
-            class_id=class_ids
-        )
-
-        return name, {'image': cv2.imread(frame_path), 'detection': detection}
-
-    def download_labels(self):
+    def download_data(self):
         """
         Download and process labels, creating a YOLO-format dataset.
-
-        :return:
         """
         # Query TATOR given the search string
-        query = self.api.get_localization_list(project=self.project_id, encoded_search=self.search_string)
-        print(f"NOTE: Found {len(query)} Localizations")
+        print("NOTE: Querying TATOR for data")
+        self.query = self.api.get_localization_list(project=self.project_id,
+                                                    encoded_search=self.search_string)
+        # Extract data from query
+        self.process_query()
+        print(f"NOTE: Found {len(self.data)} Localizations")
 
-        # Extract needed information from data
-        data = self.process_query(query).head(1000)
-        classes = data['label'].unique().tolist()
-        class_to_id = {class_name: i for i, class_name in enumerate(classes)}
+        # Write the dataset yaml file
+        self.write_yaml()
 
-        # Download frames (multithreading)
-        results = []
-        for media_id in tqdm(data['media'].unique(), desc="Processing media"):
-            subset, frames = self.process_media(media_id, data[data['media'] == media_id])
-            results.append((subset, frames))
+        # Write all the label files
+        self.write_labels()
 
-        data = pd.concat([result[0] for result in results])
-        frame_paths = [path for result in results for path in result[1]]
+        # Download all the frames
+        self.download_frames()
 
-        # Prepare for YOLO format
-        images = {}
-        detections = {}
-        for frame_path in tqdm(frame_paths, desc="Processing frames"):
-            name, result = self.process_frame(frame_path, data, class_to_id)
-            images[name] = result['image']
-            detections[name] = result['detection']
+        # Render the dataset
+        self.render()
 
-        # Convert to YOLO dataset
-        dataset = sv.DetectionDataset(classes=classes, images=images, annotations=detections)
-        dataset.as_yolo(
-            self.dataset_dir + "/images",
-            self.dataset_dir + "/annotations",
-            min_image_area_percentage=0.01,
-            data_yaml_path=self.dataset_dir + "/data.yaml"
-        )
-
-        # Render results, split to training / validation sets
-        render_dataset(dataset, f"{self.dataset_dir}/rendered")
-        helpers.split_data(self.dataset_dir, record_confidence=False)
+        print(f"NOTE: Dataset created at {self.dataset_dir}")
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -239,23 +285,28 @@ def main():
     parser.add_argument("--search_string", type=str, required=True,
                         help="Search string for localizations")
 
-    parser.add_argument("--dataset_name", type=str, default="Test",
+    parser.add_argument("--code_as", type=str, default="",
+                        help="Change all labels to _, else original labels are kept")
+
+    parser.add_argument("--dataset_name", type=str, required=True,
                         help="Name of the dataset")
 
-    parser.add_argument("--output_dir", type=str,
-                        default=os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
-                        help="Search string for localizations")
+    parser.add_argument("--output_dir", type=str, required=True,
+                        help="Where to download data to")
 
     args = parser.parse_args()
 
     try:
-        downloader = DataDownloader(api_token=args.api_token,
-                                    project_id=args.project_id,
-                                    search_string=args.search_string,
-                                    dataset_name=args.dataset_name,
-                                    output_dir=args.output_dir)
-        downloader.download_labels()
+
+        DataDownloader(api_token=args.api_token,
+                       project_id=args.project_id,
+                       search_string=args.search_string,
+                       dataset_name=args.dataset_name,
+                       code_as=args.code_as,
+                       output_dir=args.output_dir).download_data()
+
         print("Done.")
+
     except Exception as e:
         print(f"ERROR: Could not finish process.\n{e}")
         print(traceback.format_exc())
