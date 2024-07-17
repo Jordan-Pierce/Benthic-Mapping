@@ -147,7 +147,7 @@ class DataDownloader:
             data.append(row_dict)
 
         # Create DataFrame from the list of dictionaries
-        self.data = pd.DataFrame(data).sample(n=200)
+        self.data = pd.DataFrame(data)
         self.data.dropna(axis=0, how='any', inplace=True)
         self.data.reset_index(drop=True, inplace=True)
 
