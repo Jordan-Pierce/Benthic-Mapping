@@ -1,6 +1,6 @@
 import os
-import shutil
 import random
+import shutil
 import argparse
 import traceback
 import concurrent.futures
@@ -159,15 +159,9 @@ class DataDownloader:
         if self.frac < 1:
 
             # Group by frame_path
-            grouped = self.data.groupby('frame_path')
-
-            # Function to sample a fraction of rows from each group
-            def sample_fraction(group):
-                n = max(1, int(len(group) * self.frac))
-                return group.sample(n=n, random_state=42)
-
-            # Apply sampling to each group
-            sampled_data = grouped.apply(sample_fraction)
+            frames = self.data['frame'].unique().tolist()
+            sampled_frames = random.sample(frames, int(len(frames) * self.frac))
+            sampled_data = self.data[self.data['frame'].isin(sampled_frames)]
 
             # Reset index after sampling
             self.data = sampled_data.reset_index(drop=True)
