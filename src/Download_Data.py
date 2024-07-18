@@ -1,5 +1,6 @@
 import os
 import shutil
+import random
 import argparse
 import traceback
 import concurrent.futures
@@ -9,7 +10,6 @@ import tator
 import pandas as pd
 
 import supervision as sv
-from autodistill import helpers
 
 from Common import render_dataset
 
@@ -23,16 +23,20 @@ class DataDownloader:
                  api_token: str,
                  project_id: int,
                  search_string: str,
-                 dataset_name: str,
+                 frac: float,
                  code_as: str,
+                 dataset_name: str,
+                 draw_bboxes: bool,
                  output_dir: str):
         """
 
         :param api_token:
         :param project_id:
         :param search_string:
-        :param dataset_name:
+        :param frac:
         :param code_as:
+        :param dataset_name:
+        :param draw_bboxes:
         :param output_dir:
         """
         self.api = None
@@ -40,9 +44,11 @@ class DataDownloader:
         self.token = api_token
         self.project_id = project_id
         self.search_string = search_string
+        self.frac = frac
 
-        self.dataset_name = dataset_name
         self.code_as = code_as
+        self.dataset_name = dataset_name
+        self.draw_bboxes = draw_bboxes
 
         self.dataset_dir = f"{output_dir}/{self.dataset_name}"
 
@@ -111,6 +117,7 @@ class DataDownloader:
         """
         Process the query by restructuring the data into a DataFrame;
         each row contains a localization, and the media it belongs to.
+        Then group by image_path and randomly sample.
 
         :return: None
         """
@@ -148,6 +155,23 @@ class DataDownloader:
 
         # Create DataFrame from the list of dictionaries
         self.data = pd.DataFrame(data)
+
+        if self.frac < 1:
+
+            # Group by frame_path
+            grouped = self.data.groupby('frame_path')
+
+            # Function to sample a fraction of rows from each group
+            def sample_fraction(group):
+                n = max(1, int(len(group) * self.frac))
+                return group.sample(n=n, random_state=42)
+
+            # Apply sampling to each group
+            sampled_data = grouped.apply(sample_fraction)
+
+            # Reset index after sampling
+            self.data = sampled_data.reset_index(drop=True)
+
         self.data.dropna(axis=0, how='any', inplace=True)
         self.data.reset_index(drop=True, inplace=True)
 
@@ -229,13 +253,15 @@ class DataDownloader:
         :return:
         """
         try:
-            dataset = sv.DetectionDataset.from_yolo(
-                images_directory_path=f"{self.dataset_dir}/images",
-                annotations_directory_path=f"{self.dataset_dir}/labels",
-                data_yaml_path=f"{self.dataset_dir}/data.yaml",
-            )
 
-            render_dataset(dataset, f"{self.dataset_dir}/render")
+            if self.draw_bboxes:
+                dataset = sv.DetectionDataset.from_yolo(
+                    images_directory_path=f"{self.dataset_dir}/images",
+                    annotations_directory_path=f"{self.dataset_dir}/labels",
+                    data_yaml_path=f"{self.dataset_dir}/data.yaml",
+                )
+
+                render_dataset(dataset, f"{self.dataset_dir}/render")
 
         except Exception as e:
             print(f"ERROR: Failed to render dataset\n{e}")
@@ -248,9 +274,10 @@ class DataDownloader:
         print("NOTE: Querying TATOR for data")
         self.query = self.api.get_localization_list(project=self.project_id,
                                                     encoded_search=self.search_string)
+
         # Extract data from query
         self.process_query()
-        print(f"NOTE: Found {len(self.data)} Localizations")
+        print(f"NOTE: Found {len(self.query)} localizations, sampled {len(self.data)}")
 
         # Write the dataset yaml file
         self.write_yaml()
@@ -285,11 +312,17 @@ def main():
     parser.add_argument("--search_string", type=str, required=True,
                         help="Search string for localizations")
 
+    parser.add_argument("--frac", type=float, default=1.0,
+                        help="Sub-sample the amount of images being downloaded")
+
     parser.add_argument("--code_as", type=str, default="",
                         help="Change all labels to _, else original labels are kept")
 
     parser.add_argument("--dataset_name", type=str, required=True,
                         help="Name of the dataset")
+
+    parser.add_argument("--draw_bboxes", action="store_true",
+                        help="Render the annotations superimposed on images")
 
     parser.add_argument("--output_dir", type=str, required=True,
                         help="Where to download data to")
@@ -301,8 +334,10 @@ def main():
         DataDownloader(api_token=args.api_token,
                        project_id=args.project_id,
                        search_string=args.search_string,
-                       dataset_name=args.dataset_name,
+                       frac=args.frac,
                        code_as=args.code_as,
+                       dataset_name=args.dataset_name,
+                       draw_bboxes=args.draw_bboxes,
                        output_dir=args.output_dir).download_data()
 
         print("Done.")
