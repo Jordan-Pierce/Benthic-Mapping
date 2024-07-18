@@ -10,6 +10,8 @@ from PIL import Image
 
 import supervision as sv
 
+random.seed(42)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Classes
@@ -43,7 +45,7 @@ class ChipCreator:
         self.classes = self.dataset['names']
 
         # Create all the sub folders
-        for split in ['train', 'valid', 'test']:
+        for split in ['train', 'val', 'test']:
             for name in self.classes:
                 os.makedirs(f"{self.output_dir}/{split}/{name}", exist_ok=True)
 
@@ -75,11 +77,12 @@ class ChipCreator:
         # Load train dataset if available
         if index < len(self.train_paths):
             train_path = self.train_paths[index]
-            train_path = f"{train_path}/images" if not train_path.endswith("images") else train_path
+            images_path = f"{train_path}/images" if not train_path.endswith("images") else train_path
+            labels_path = images_path.replace('images', 'labels')
             try:
                 train = sv.DetectionDataset.from_yolo(
-                    images_directory_path=train_path,
-                    annotations_directory_path=train_path.replace('images', 'labels'),
+                    images_directory_path=images_path,
+                    annotations_directory_path=labels_path,
                     data_yaml_path=self.dataset_path,
                 )
                 images.update(train.images)
@@ -90,11 +93,12 @@ class ChipCreator:
         # Load valid dataset if available
         if index < len(self.valid_paths):
             valid_path = self.valid_paths[index]
-            valid_path = f"{valid_path}/images" if not valid_path.endswith("images") else valid_path
+            images_path = f"{valid_path}/images" if not valid_path.endswith("images") else valid_path
+            labels_path = images_path.replace('images', 'labels')
             try:
                 valid = sv.DetectionDataset.from_yolo(
-                    images_directory_path=valid_path,
-                    annotations_directory_path=valid_path.replace('images', 'labels'),
+                    images_directory_path=images_path,
+                    annotations_directory_path=labels_path,
                     data_yaml_path=self.dataset_path,
                 )
                 images.update(valid.images)
@@ -110,6 +114,8 @@ class ChipCreator:
         self.detection_dataset = sv.DetectionDataset(classes=self.classes,
                                                      images=images,
                                                      annotations=annotations)
+
+        print(f"NOTE: Loaded dataset - {len(self.detection_dataset)} detections found")
 
     def chip_image(self, image, xyxy):
         """
@@ -138,7 +144,7 @@ class ChipCreator:
         """
         Save a chip as an RGB image.
 
-        :param split: Dataset split (e.g., 'train', 'valid')
+        :param split: Dataset split (e.g., 'train', 'val', 'test')
         :param class_name: Name of the class
         :param chip_name: Name of the chip
         :param chip: Numpy array representing the image
@@ -173,7 +179,7 @@ class ChipCreator:
         :return:
         """
         # Loop through all the images in the detection dataset
-        for image_path, image in self.detection_dataset.images.items():
+        for image_path, image in tqdm(self.detection_dataset.images.items()):
 
             # Get the image basename, corresponding detections
             image_name = os.path.basename(image_path).split(".")[0]
@@ -183,14 +189,14 @@ class ChipCreator:
             for i, (xyxy, class_id) in enumerate(zip(detections.xyxy, detections.class_id)):
 
                 # Randomly assign the chip to train, valid or test
-                split = random.choices(['train', 'valid', 'test'], weights=[70, 20, 10])[0]
+                split = random.choices(['train', 'val', 'test'], weights=[70, 20, 10])[0]
 
                 # Get the chip
                 chip = self.chip_image(image, xyxy)
 
                 if chip is not None:
                     class_name = self.detection_dataset.classes[class_id]
-                    chip_name = f"{class_name}_{i}_{image_name}.jpg"
+                    chip_name = f"{class_name}_{i}_{image_name}.jpeg"
                     self.save_chip(split, class_name, chip_name, chip)
 
     def run(self):
@@ -202,7 +208,7 @@ class ChipCreator:
         self.load_dataset()
 
         # Loop through each of the datasets, chip bboxes
-        for _ in tqdm(range(self.num_datasets)):
+        for _ in range(self.num_datasets):
             self.load_detection_dataset(_)
             self.create_chips()
 
