@@ -1,4 +1,5 @@
 import os
+import json
 import random
 import shutil
 import argparse
@@ -22,9 +23,10 @@ class DataDownloader:
     def __init__(self,
                  api_token: str,
                  project_id: int,
+                 media_id: int,
                  search_string: str,
                  frac: float,
-                 code_as: str,
+                 code_as: dict,
                  dataset_name: str,
                  draw_bboxes: bool,
                  output_dir: str):
@@ -32,6 +34,7 @@ class DataDownloader:
 
         :param api_token:
         :param project_id:
+        :param media_id:
         :param search_string:
         :param frac:
         :param code_as:
@@ -43,6 +46,7 @@ class DataDownloader:
 
         self.token = api_token
         self.project_id = project_id
+        self.media_id = media_id
         self.search_string = search_string
         self.frac = frac
 
@@ -97,22 +101,6 @@ class DataDownloader:
         except Exception as e:
             print(f"WARNING: An error occurred while writing search string to file:\n{e}")
 
-    def write_yaml(self):
-        """
-        Writes a YOLO-formatted dataset yaml file
-
-        :return:
-        """
-        self.classes = self.data['label'].unique().tolist()
-        self.class_to_id = {class_name: i for i, class_name in enumerate(self.classes)}
-
-        # Create data.yaml
-        with open(f"{self.dataset_dir}/data.yaml", 'w') as f:
-            f.write(f"names: {self.classes}\n")
-            f.write(f"nc: {len(self.classes)}\n")
-            f.write(f"train: {os.path.join(self.dataset_dir, 'images')}\n")
-            f.write(f"val: {os.path.join(self.dataset_dir, 'images')}\n")
-
     def process_query(self):
         """
         Process the query by restructuring the data into a DataFrame;
@@ -124,16 +112,28 @@ class DataDownloader:
         data = []
 
         for q in self.query:
+
+            if q.media != self.media_id:
+                continue
+
             frame_name = f"{q.media}_{q.frame}.jpg"
             label_name = f"{q.media}_{q.frame}.txt"
 
             try:
-                original_label = str(q.attributes['ScientificName'])
+                label = str(q.attributes['ScientificName'])
             except Exception as e:
-                original_label = 'Unknown'
+                raise Exception(f"ERROR: Query includes instances without 'ScientificName'")
 
-            # Encode the label as something different
-            label = self.code_as if self.code_as else original_label
+            # Encode the label as something different, if specified
+            if "*" in self.code_as:
+                label = self.code_as['*']
+            else:
+                # Loop through the code_as dict values
+                for key in list(self.code_as.keys()):
+                    # If there's a match, update the label
+                    if key.lower() in label.lower():
+                        label = self.code_as[key]
+                        break
 
             # Create a dictionary for each row
             row_dict = {
@@ -156,18 +156,69 @@ class DataDownloader:
         # Create DataFrame from the list of dictionaries
         self.data = pd.DataFrame(data)
 
-        if self.frac < 1:
+        # QA / QC
+        self.data.dropna(axis=0, how='any', inplace=True)
+        self.data.drop_duplicates(inplace=True)
+        self.data.reset_index(drop=True, inplace=True)
 
+        if self.frac < 1:
             # Group by frame_path
-            frames = self.data['frame'].unique().tolist()
+            frames = self.data['frame_path'].unique().tolist()
             sampled_frames = random.sample(frames, int(len(frames) * self.frac))
-            sampled_data = self.data[self.data['frame'].isin(sampled_frames)]
+            sampled_data = self.data[self.data['frame_path'].isin(sampled_frames)]
 
             # Reset index after sampling
             self.data = sampled_data.reset_index(drop=True)
 
-        self.data.dropna(axis=0, how='any', inplace=True)
-        self.data.reset_index(drop=True, inplace=True)
+    def write_yaml(self):
+        """
+        Writes a YOLO-formatted dataset yaml file
+
+        :return:
+        """
+        self.classes = self.data['label'].unique().tolist()
+        self.class_to_id = {class_name: i for i, class_name in enumerate(self.classes)}
+
+        # Create data.yaml
+        with open(f"{self.dataset_dir}/data.yaml", 'w') as f:
+            f.write(f"names: {self.classes}\n")
+            f.write(f"nc: {len(self.classes)}\n")
+            f.write(f"train: {os.path.join(self.dataset_dir, 'images')}\n")
+            f.write(f"val: {os.path.join(self.dataset_dir, 'images')}\n")
+
+    def write_labels(self):
+        """
+        Write YOLO-formatted labels to text files.
+
+        :return
+        """
+        for label_path in self.data['label_path'].unique():
+            # Get all labels that correspond to this label / image file
+            label_df = self.data[self.data['label_path'] == label_path]
+
+            yolo_annotations = []
+            for _, row in label_df.iterrows():
+                class_id = self.class_to_id[row['label']]
+                x_center = (row['x'] + row['width'] / 2)
+                y_center = (row['y'] + row['height'] / 2)
+                w = row['width']
+                h = row['height']
+
+                # Convert to YOLO format (normalized)
+                x_center /= 1.0
+                y_center /= 1.0
+                w /= 1.0
+                h /= 1.0
+
+                # Create YOLO-formatted annotation string
+                yolo_annotation = f"{class_id} {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}"
+                yolo_annotations.append(yolo_annotation)
+
+            # Save annotations
+            with open(label_path, 'w') as f:
+                f.write('\n'.join(yolo_annotations))
+
+            print("Downloaded: ", label_path)
 
     def download_frames(self):
         """
@@ -206,40 +257,6 @@ class DataDownloader:
                 print(f"Downloaded: {row['frame_path'].item()}")
             except Exception as e:
                 print(f"Error downloading {row['frame_path'].item()}: {str(e)}")
-
-    def write_labels(self):
-        """
-        Write YOLO-formatted labels to text files.
-
-        :return
-        """
-        for label_path in self.data['label_path'].unique():
-            # Get all labels that correspond to this label / image file
-            label_df = self.data[self.data['label_path'] == label_path]
-
-            yolo_annotations = []
-            for _, row in label_df.iterrows():
-                class_id = self.class_to_id[row['label']]
-                x_center = (row['x'] + row['width'] / 2)
-                y_center = (row['y'] + row['height'] / 2)
-                w = row['width']
-                h = row['height']
-
-                # Convert to YOLO format (normalized)
-                x_center /= 1.0
-                y_center /= 1.0
-                w /= 1.0
-                h /= 1.0
-
-                # Create YOLO-formatted annotation string
-                yolo_annotation = f"{class_id} {x_center:.6f} {y_center:.6f} {w:.6f} {h:.6f}"
-                yolo_annotations.append(yolo_annotation)
-
-            # Save annotations
-            with open(label_path, 'w') as f:
-                f.write('\n'.join(yolo_annotations))
-
-            print("Downloaded: ", label_path)
 
     def render(self):
         """
@@ -293,15 +310,32 @@ class DataDownloader:
 # ----------------------------------------------------------------------------------------------------------------------
 
 def main():
+
+    code_as_ = {
+        "atlantica": "ANTIPATHESATLANTICA",
+        "furcata": "ANTIPATHESFURCATA",
+        "bebryce": "BEBRYCESP",
+        "madracis": "MADRACISSP",
+        "madrepora": "MADREPORASP",
+        "muricea": "MURICEAPENDULA",
+        "pendula": "MURICEAPENDULA",
+        "swiftia": "SWIFTIAEXSERTA",
+        "exserta": "SWIFTIAEXSERTA",
+        "thesea": "THESEANIVEA",
+        "nivea": "THESEANIVEA"
+    }
+
     parser = argparse.ArgumentParser(description="Download frames and labels from TATOR")
 
     parser.add_argument("--api_token", type=str,
                         default=os.getenv('TATOR_TOKEN'),
                         help="Tator API Token")
 
-    parser.add_argument("--project_id", type=int,
-                        default=70,
+    parser.add_argument("--project_id", type=int, default=70,
                         help="Project ID for desired media")
+
+    parser.add_argument("--media_id", type=int, default=6767090,
+                        help="Media ID for desired media")
 
     parser.add_argument("--search_string", type=str, required=True,
                         help="Search string for localizations")
@@ -309,8 +343,8 @@ def main():
     parser.add_argument("--frac", type=float, default=1.0,
                         help="Sub-sample the amount of images being downloaded")
 
-    parser.add_argument("--code_as", type=str, default="",
-                        help="Change all labels to _, else original labels are kept")
+    parser.add_argument("--code_as", type=json.loads, default=code_as_,
+                        help="For mapping labels, provide as json string: Ex {'a': 'A', 'b': 'B', 'c': 'C'}")
 
     parser.add_argument("--dataset_name", type=str, required=True,
                         help="Name of the dataset")
@@ -327,6 +361,7 @@ def main():
 
         DataDownloader(api_token=args.api_token,
                        project_id=args.project_id,
+                       media_id=args.media_id,
                        search_string=args.search_string,
                        frac=args.frac,
                        code_as=args.code_as,
