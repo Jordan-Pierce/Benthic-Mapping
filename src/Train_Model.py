@@ -151,9 +151,6 @@ def main():
     parser.add_argument("--run_dir", type=str, default=None,
                         help="Directory to save run results")
 
-    parser.add_argument("--run_prefix", type=str, default=None,
-                        help="Prefix for the run name")
-
     parser.add_argument("--task", type=str, default='detect',
                         help="Task type (e.g., 'detect', 'classify', 'segment')")
 
