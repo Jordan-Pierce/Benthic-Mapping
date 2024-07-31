@@ -45,7 +45,7 @@ def render_dataset(dataset, output_dir, include_boxes=True, include_masks=True):
     labeler = sv.LabelAnnotator()
 
     with sv.ImageSink(target_dir_path=output_dir, overwrite=False) as sink:
-        for image_name in tqdm(image_names, desc="Rendering dataset"):
+        for image_name in tqdm(image_names, desc="Rendering Frames"):
             # Get the images and annotation
             image = dataset.images[image_name].astype(np.uint8)
             annotations = dataset.annotations[image_name]

@@ -4,7 +4,6 @@ tqdm
 numpy
 pandas
 scipy
-gradio
 matplotlib
 opencv-python
 opencv-contrib-python
@@ -12,10 +11,10 @@ opencv-python-headless
 scikit_image
 tator
 ffmpeg-python
-roboflow==1.1.33
-supervision==0.21.0
-ultralytics==8.2.38
+ultralytics
+supervision
+roboflow
 sahi
-autodistill==0.1.26
-autodistill-grounded-sam
+autodistill
+autodistill-yolov8
 autodistill_grounding_dino

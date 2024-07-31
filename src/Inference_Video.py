@@ -12,12 +12,14 @@ from ultralytics import SAM
 from ultralytics import YOLO
 from ultralytics import RTDETR
 
+import matplotlib.pyplot as plt
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Functions
 # ----------------------------------------------------------------------------------------------------------------------
 
-def calculate_slice_parameters(width: int, height: int, slices_x: int = 2, slices_y: int = 2, overlap: float = 0.3):
+def calculate_slice_parameters(width: int, height: int, slices_x: int = 2, slices_y: int = 2, overlap: float = 0.25):
     """
     Calculate slice parameters for video frames; defaults to 2x2, 10% overlap
 
@@ -48,8 +50,10 @@ def mask_image(image, masks):
     :return:
     """
     masked_image = image.copy()
-    for mask in masks:
-        masked_image[mask] = 0
+
+    if masks is not None:
+        for mask in masks:
+            masked_image[mask.astype(bool)] = 0
 
     return masked_image
 
@@ -114,12 +118,12 @@ class VideoInferencer:
             else:
                 raise ValueError(f"Model type {self.model_type} not supported")
 
-            self.box_annotator = sv.BoundingBoxAnnotator()
+            self.box_annotator = sv.BoxAnnotator()
             self.mask_annotator = sv.MaskAnnotator()
             self.labeler = sv.LabelAnnotator()
 
             if self.segment:
-                self.sam_model = SAM('sam_l.pt')
+                self.sam_model = SAM('sam2_b.pt')
 
             if self.track:
                 self.tracker = sv.ByteTrack()
@@ -135,13 +139,13 @@ class VideoInferencer:
         :param frame:
         :return:
         """
-        slice_wh, overlap_ratio_wh = calculate_slice_parameters(frame.shape[0], frame.shape[1])
+        slice_wh, overlap_ratio_wh = calculate_slice_parameters(frame.shape[1], frame.shape[0])
 
         self.slicer = sv.InferenceSlicer(callback=self.slicer_callback,
                                          slice_wh=slice_wh,
-                                         iou_threshold=0.50,
+                                         iou_threshold=0.90,
                                          overlap_ratio_wh=overlap_ratio_wh,
-                                         overlap_filter_strategy=sv.OverlapFilter.NON_MAX_MERGE)
+                                         overlap_filter_strategy=sv.OverlapFilter.NONE)
 
     @torch.no_grad()
     def slicer_callback(self, image_slice: np.ndarray):
@@ -151,8 +155,12 @@ class VideoInferencer:
         :param image_slice:
         :return:
         """
-        results = self.yolo_model(image_slice, max_det=1000)[0]
+        results = self.yolo_model(image_slice,
+                                  iou=0.50,
+                                  conf=0.50)[0]
+
         results = sv.Detections.from_ultralytics(results)
+
         return results
 
     def apply_smol(self, frame, detections):
@@ -171,7 +179,7 @@ class VideoInferencer:
             # Mask out the frame where previous detections were
             masked_frame = mask_image(frame, detections.mask)
             # Make predictions on the masked frame
-            smol_detections = self.slicer(masked_frame)
+            smol_detections = self.slicer(masked_frame).with_nmm(0.1, class_agnostic=True)
 
             if self.segment:
                 # Get SAM masks for the smol detections (original frame)
@@ -190,14 +198,14 @@ class VideoInferencer:
         :param detections:
         :return:
         """
-        if detections:
+        if detections or False:
             # Pass bboxes to SAM, store masks in detections
             bboxes = detections.xyxy
             masks = self.sam_model(frame, bboxes=bboxes)[0]
             masks = masks.masks.data.cpu().numpy()
             detections.mask = masks.astype(np.uint8)
 
-            detections.mask = masks
+        detections = self.sam_model(frame)[0]
 
         return detections
 
@@ -229,7 +237,6 @@ class VideoInferencer:
                     detections = self.yolo_model(frame,
                                                  iou=self.iou,
                                                  conf=self.conf,
-                                                 max_det=2500,
                                                  device=self.device)[0]
 
                     detections = sv.Detections.from_ultralytics(detections)
@@ -241,10 +248,8 @@ class VideoInferencer:
                     # Perform smaller detections / segmentations
                     if self.smol:
                         detections = self.apply_smol(frame, detections)
-
-                    # Do NMM / NMS with all detections (bboxes)
-                    detections = detections.with_nmm(self.iou, class_agnostic=True)
-                    detections = detections.with_nms(self.iou, class_agnostic=True)
+                        # Do NMM / NMS with all detections (bboxes)
+                        detections = detections.with_nms(0.1, class_agnostic=True)
 
                     # Prepare the labels
                     class_names = detections.data['class_name'].tolist()

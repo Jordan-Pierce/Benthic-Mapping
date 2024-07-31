@@ -6,6 +6,7 @@ import tator
 import cv2
 
 from Rocks.rock_algorithm import RockAlgorithm
+from Coral.coral_algorithm import CoralAlgorithm
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -35,6 +36,51 @@ class TatorOperator:
         except Exception as e:
             raise Exception(f"ERROR: Could not connect to TATOR.\n{e}")
 
+    def get_spec(self, frame_idx, points):
+        """
+
+        :return:
+        """
+        # GL Project
+        if self.project_id == 155:
+
+            return {
+                'type': 460,  # rock poly (mask) type
+                'media_id': self.media_id,
+                'version_id': 545,  # Imported Data
+                'points': points,
+                'frame': frame_idx,
+                'attributes': {
+                    "Label": "Rock"
+                },
+            }
+
+        # MDBC Project
+        elif self.project_id == 70:
+
+            # Extract the bbox
+            x, y, w, h = points
+
+            return {
+                'type': 440,  # Detection Box
+                'media_id': self.media_id,
+                'version_id': 408,  # Imported Data
+                'x': x,
+                'y': y,
+                'width': w,
+                'height': h,
+                'frame': frame_idx,
+                'attributes': {
+                    # "ScientificName": "",
+                    # "CommonName": "",
+                    # "Score": 0.0,
+                    "Needs Review": True
+                },
+            }
+
+        else:
+            raise Exception(f"ERROR: Project ID {self.project_id} is not valid.")
+
     def upload_predictions(self, frame_idx, polygon_points):
         """
 
@@ -48,15 +94,7 @@ class TatorOperator:
             # Add each of the polygon points to the localization list
             for points in polygon_points:
                 # Specify spec
-                spec = {
-                    'type': 460,  # rock poly type
-                    'media_id': self.media_id,
-                    'version_id': 546,  # rock anno ver
-                    'points': points,
-                    'frame': frame_idx,
-                    'attributes': {"Label": "Rock"},
-                }
-                localizations.append(spec)
+                localizations.append(self.get_spec(frame_idx, points))
 
             print(f"NOTE: Uploading {len(localizations)} predictions to TATOR")
 
@@ -188,6 +226,69 @@ def run_rock_algorithm(token,
         return error_msg
 
 
+def run_coral_algorithm(token,
+                        remember_token,
+                        project_id,
+                        media_id,
+                        frame_ranges,
+                        conf,
+                        iou,
+                        model_type,
+                        model_weights,
+                        progress=gr.Progress()):
+    """
+    Run the coral algorithm on specified frame ranges.
+
+    :param token: Tator API token
+    :param remember_token: Whether to remember the token
+    :param project_id: Tator project ID
+    :param media_id: Tator media ID
+    :param frame_ranges: String specifying frame ranges to process
+    :param conf: Confidence threshold
+    :param iou: IoU threshold
+    :param model_type: Type of model (YOLO, or RTDETR)
+    :param model_weights: Path to model weights file
+    :param progress: Gradio progress bar
+    :return: Status message
+    """
+    try:
+        if remember_token:
+            os.environ['TATOR_TOKEN'] = str(token)
+
+        tator_operator = TatorOperator(token, project_id, media_id)
+
+        config = {
+            "model_confidence_threshold": float(conf),
+            "iou_threshold": float(iou),
+            "model_type": str(model_type),
+            "model_path": str(model_weights),
+        }
+
+        coral_algo = CoralAlgorithm(config)
+        progress(0, "Initializing algorithm...")
+        coral_algo.initialize()
+
+        frames_to_process = parse_frame_ranges(frame_ranges)
+        total_frames = len(frames_to_process)
+
+        for i, frame_idx in enumerate(frames_to_process):
+            progress((i + 1) / total_frames, f"Processing frame {frame_idx}")
+            progress((i + 1) / total_frames, f"Downloading frame {frame_idx}")
+            frame = tator_operator.download_frame(frame_idx)
+            progress((i + 1) / total_frames, f"Making predictions for frame {frame_idx}")
+            predictions = coral_algo.infer(frame)
+            progress((i + 1) / total_frames, f"Uploading predictions for frame {frame_idx}")
+            tator_operator.upload_predictions(frame_idx, predictions)
+
+        gr.Info("Processing completed successfully!")
+        return "Done."
+
+    except Exception as e:
+        error_msg = f"ERROR: Failed to complete inference!\n{e}\n{traceback.format_exc()}"
+        gr.Error(error_msg)
+        return error_msg
+
+
 def launch_gui():
     """
     Launches the Benthic-Mapping GUI.
@@ -217,7 +318,7 @@ def launch_gui():
 
                     with gr.Column():
                         gr.Markdown("Enter the ID of the media file you want to process.")
-                        media_id = gr.Number(label="Media ID")
+                        media_id = gr.Number(label="Media ID", value=None)
 
             with gr.Group():
                 gr.Markdown("## Model Parameters")
@@ -245,20 +346,79 @@ def launch_gui():
             gr.Markdown("The results and any messages from the algorithm will be displayed here.")
             output = gr.Textbox(label="Output", lines=10)
 
-        run_button.click(
-            run_rock_algorithm,
-            inputs=[token,
-                    remember_token,
-                    project_id,
-                    media_id,
-                    frame_ranges,
-                    conf,
-                    iou,
-                    smol,
-                    model_type,
-                    model_weights],
-            outputs=output
-        )
+            run_button.click(
+                run_rock_algorithm,
+                inputs=[token,
+                        remember_token,
+                        project_id,
+                        media_id,
+                        frame_ranges,
+                        conf,
+                        iou,
+                        smol,
+                        model_type,
+                        model_weights],
+                outputs=output
+            )
+
+        with gr.Tab("CoralAlgorithm"):
+            with gr.Group():
+                gr.Markdown("## Upload Coral Predictions")
+                gr.Markdown("Enter your Tator API token here. This is required for authentication.")
+                token = gr.Textbox(label="Token", type="password", value=os.getenv("TATOR_TOKEN"))
+
+                gr.Markdown("Check this box to save your token for future use.")
+                remember_token = gr.Checkbox(label="Remember Token", value=True)
+
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("Enter the ID of the Tator project you're working on.")
+                        project_id = gr.Number(label="Project ID", value=70)
+
+                        gr.Markdown("Use commas to separate ranges, dashes for inclusive ranges, "
+                                    "and single numbers for individual frames: 25-30, 45, 50")
+                        frame_ranges = gr.Textbox(label="Frame Ranges")
+
+                    with gr.Column():
+                        gr.Markdown("Enter the ID of the media file you want to process.")
+                        media_id = gr.Number(label="Media ID", value=4346964)
+
+            with gr.Group():
+                gr.Markdown("## Model Parameters")
+
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("Higher values mean stricter detection.")
+                        conf = gr.Slider(label="Confidence Threshold", minimum=0, maximum=1, value=0.5)
+
+                    with gr.Column():
+                        gr.Markdown("Higher values mean less overlap allowed between detections.")
+                        iou = gr.Slider(label="IoU Threshold", minimum=0, maximum=1, value=0.7)
+
+                        gr.Markdown("Specify the model architecture, either YOLO or RTDETR.")
+                        model_type = gr.Radio(choices=["YOLO", "RTDETR"], value="YOLO", label="Model Type")
+
+                gr.Markdown("Upload the file containing the trained model weights.")
+                model_weights = gr.File(label="Model Weights")
+
+            run_button = gr.Button("Run")
+
+            gr.Markdown("The results and any messages from the algorithm will be displayed here.")
+            output = gr.Textbox(label="Output", lines=10)
+
+            run_button.click(
+                run_coral_algorithm,
+                inputs=[token,
+                        remember_token,
+                        project_id,
+                        media_id,
+                        frame_ranges,
+                        conf,
+                        iou,
+                        model_type,
+                        model_weights],
+                outputs=output
+            )
 
     app.launch(share=True)
 
