@@ -94,6 +94,7 @@ class VideoInferencer:
         self.show = show
 
         self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+        print(f"NOTE: Device set as {self.device}")
 
         self.yolo_model = None
         self.sam_model = None
@@ -118,12 +119,15 @@ class VideoInferencer:
             else:
                 raise ValueError(f"Model type {self.model_type} not supported")
 
+            self.mask_annotator = sv.PolygonAnnotator()
             self.box_annotator = sv.BoxAnnotator()
-            self.mask_annotator = sv.MaskAnnotator()
             self.labeler = sv.LabelAnnotator()
 
             if self.segment:
-                self.sam_model = SAM('sam2_b.pt')
+                try:
+                    self.sam_model = SAM('sam2_b.pt')
+                except Exception as e:
+                    self.sam_model = SAM('sam_b.pt')
 
             if self.track:
                 self.tracker = sv.ByteTrack()
@@ -198,14 +202,12 @@ class VideoInferencer:
         :param detections:
         :return:
         """
-        if detections or False:
+        if detections:
             # Pass bboxes to SAM, store masks in detections
             bboxes = detections.xyxy
             masks = self.sam_model(frame, bboxes=bboxes)[0]
             masks = masks.masks.data.cpu().numpy()
             detections.mask = masks.astype(np.uint8)
-
-        detections = self.sam_model(frame)[0]
 
         return detections
 
@@ -263,8 +265,8 @@ class VideoInferencer:
                         labels = [f"{t_id} {l}" for t_id, l in list(zip(tracker_ids, labels))]
 
                     # Display frame, boxes, masks, labels, and rack
-                    frame = self.mask_annotator.annotate(scene=frame, detections=detections)
                     frame = self.box_annotator.annotate(scene=frame, detections=detections)
+                    frame = self.mask_annotator.annotate(scene=frame, detections=detections)
                     frame = self.labeler.annotate(scene=frame, detections=detections, labels=labels)
 
                     sink.write_frame(frame=frame)

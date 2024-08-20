@@ -36,82 +36,24 @@ class TatorOperator:
         except Exception as e:
             raise Exception(f"ERROR: Could not connect to TATOR.\n{e}")
 
-    def get_spec(self, frame_idx, points):
+    @staticmethod
+    def parse_frame_ranges(frame_ranges_str):
         """
+        Parse the frame ranges string into a list of frame numbers.
 
-        :return:
+        :param frame_ranges_str:
         """
-        # GL Project
-        if self.project_id == 155:
+        frames = []
+        ranges = frame_ranges_str.split(',')
+        for r in ranges:
+            r = r.strip()
+            if '-' in r:
+                start, end = map(int, r.split('-'))
+                frames.extend(range(start, end + 1))
+            else:
+                frames.append(int(r))
 
-            return {
-                'type': 460,  # rock poly (mask) type
-                'media_id': self.media_id,
-                'version_id': 545,  # Imported Data
-                'points': points,
-                'frame': frame_idx,
-                'attributes': {
-                    "Label": "Rock"
-                },
-            }
-
-        # MDBC Project
-        elif self.project_id == 70:
-
-            # Extract the bbox
-            x, y, w, h = points
-
-            return {
-                'type': 440,  # Detection Box
-                'media_id': self.media_id,
-                'version_id': 408,  # Imported Data
-                'x': x,
-                'y': y,
-                'width': w,
-                'height': h,
-                'frame': frame_idx,
-                'attributes': {
-                    # "ScientificName": "",
-                    # "CommonName": "",
-                    # "Score": 0.0,
-                    "Needs Review": True
-                },
-            }
-
-        else:
-            raise Exception(f"ERROR: Project ID {self.project_id} is not valid.")
-
-    def upload_predictions(self, frame_idx, polygon_points):
-        """
-
-        :param polygon_points:
-        :param frame_id:
-        :return:
-        """
-        try:
-            localizations = []
-
-            # Add each of the polygon points to the localization list
-            for points in polygon_points:
-                # Specify spec
-                localizations.append(self.get_spec(frame_idx, points))
-
-            print(f"NOTE: Uploading {len(localizations)} predictions to TATOR")
-
-            # Total localizations uploaded
-            num_uploaded = 0
-
-            # Loop through and upload to TATOR
-            for response in tator.util.chunked_create(func=self.api.create_localization_list,
-                                                      project=self.project_id,
-                                                      body=localizations):
-                num_uploaded += len(response.id)
-
-            print(f"NOTE: Successfully uploaded {num_uploaded} localizations for frame {frame_idx}")
-
-        except Exception as e:
-            print(f"ERROR: {e}")
-            print(traceback.format_exc())
+        return sorted(set(frames))
 
     def download_frame(self, frame_idx):
         """
@@ -134,29 +76,94 @@ class TatorOperator:
         except Exception as e:
             raise Exception(f"ERROR: Could not get frame {frame_idx} from {self.media_id}.\n{e}")
 
+    def get_spec(self, frame_idx, polygon, conf):
+        """
+
+        :return:
+        """
+        # GL Project
+        if self.project_id == 155:
+
+            points, conf = polygon, conf
+
+            return {
+                'type': 460,  # rock poly (mask) type
+                'media_id': self.media_id,
+                'version_id': 545,  # Imported Data
+                'points': points,
+                'frame': frame_idx,
+                'attributes': {
+                    "Label": "Rock"
+                },
+            }
+
+        # MDBC Project
+        elif self.project_id == 70:
+
+            # Extract the data
+            bbox, score = polygon, conf
+            x, y, w, h = bbox
+
+            return {
+                'type': 440,  # Detection Box
+                'media_id': self.media_id,
+                'version_id': 408,  # Imported Data
+                'x': x,
+                'y': y,
+                'width': w,
+                'height': h,
+                'frame': frame_idx,
+                'attributes': {
+                    # "ScientificName": "",
+                    # "CommonName": "",
+                    "Score": score,
+                    "Needs Review": True
+                },
+            }
+
+        else:
+            raise Exception(f"ERROR: Project ID {self.project_id} is not valid.")
+
+    def upload_predictions(self, frame_idx, polygons, confs=None):
+        """
+
+        :param predictions:
+        :param frame_id:
+        :return:
+        """
+        try:
+            localizations = []
+
+            if not confs:
+                confs = [1.0 for _ in range(len(polygons))]
+
+            # Add each of the polygon points to the localization list
+            for (polygon, conf) in list(zip(polygons, confs)):
+                # Specify spec
+                spec = self.get_spec(frame_idx, polygon, conf)
+                localizations.append(spec)
+
+            print(f"NOTE: Uploading {len(localizations)} predictions to TATOR")
+
+            # Total localizations uploaded
+            num_uploaded = 0
+
+            # Loop through and upload to TATOR
+            for response in tator.util.chunked_create(func=self.api.create_localization_list,
+                                                      project=self.project_id,
+                                                      body=localizations):
+                num_uploaded += len(response.id)
+
+            print(f"NOTE: Successfully uploaded {num_uploaded} localizations for frame {frame_idx}")
+
+        except Exception as e:
+            print(f"ERROR: {e}")
+            print(traceback.format_exc())
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Gradio
 # ----------------------------------------------------------------------------------------------------------------------
-
-def parse_frame_ranges(frame_ranges_str):
-    """
-    Parse the frame ranges string into a list of frame numbers.
-
-    :param frame_ranges_str:
-    :return:
-    """
-    frames = []
-    ranges = frame_ranges_str.split(',')
-    for r in ranges:
-        r = r.strip()
-        if '-' in r:
-            start, end = map(int, r.split('-'))
-            frames.extend(range(start, end + 1))
-        else:
-            frames.append(int(r))
-
-    return sorted(set(frames))
 
 
 def run_rock_algorithm(token,
@@ -205,7 +212,7 @@ def run_rock_algorithm(token,
         progress(0, "Initializing algorithm...")
         rock_algo.initialize()
 
-        frames_to_process = parse_frame_ranges(frame_ranges)
+        frames_to_process = tator_operator.parse_frame_ranges(frame_ranges)
         total_frames = len(frames_to_process)
 
         for i, frame_idx in enumerate(frames_to_process):
@@ -213,9 +220,9 @@ def run_rock_algorithm(token,
             progress((i + 1) / total_frames, f"Downloading frame {frame_idx}")
             frame = tator_operator.download_frame(frame_idx)
             progress((i + 1) / total_frames, f"Making predictions for frame {frame_idx}")
-            predictions = rock_algo.infer(frame)
+            polygons = rock_algo.infer(frame)
             progress((i + 1) / total_frames, f"Uploading predictions for frame {frame_idx}")
-            tator_operator.upload_predictions(frame_idx, predictions)
+            tator_operator.upload_predictions(frame_idx, polygons, confs=None)
 
         gr.Info("Processing completed successfully!")
         return "Done."
@@ -268,17 +275,28 @@ def run_coral_algorithm(token,
         progress(0, "Initializing algorithm...")
         coral_algo.initialize()
 
-        frames_to_process = parse_frame_ranges(frame_ranges)
+        frames_to_process = tator_operator.parse_frame_ranges(frame_ranges)
         total_frames = len(frames_to_process)
 
+        frames = []
+        predictions = []
+
+        # Download frames
         for i, frame_idx in enumerate(frames_to_process):
-            progress((i + 1) / total_frames, f"Processing frame {frame_idx}")
-            progress((i + 1) / total_frames, f"Downloading frame {frame_idx}")
+            progress((i + 1) / (3 * total_frames), f"Downloading frame {frame_idx}")
             frame = tator_operator.download_frame(frame_idx)
-            progress((i + 1) / total_frames, f"Making predictions for frame {frame_idx}")
-            predictions = coral_algo.infer(frame)
-            progress((i + 1) / total_frames, f"Uploading predictions for frame {frame_idx}")
-            tator_operator.upload_predictions(frame_idx, predictions)
+            frames.append((frame_idx, frame))
+
+        # Perform inference
+        for i, (frame_idx, frame) in enumerate(frames):
+            progress((i + 1 + total_frames) / (3 * total_frames), f"Making predictions for frame {frame_idx}")
+            polygons, confs = coral_algo.infer(frame)
+            predictions.append([frame_idx, polygons, confs])
+
+        # Upload predictions
+        for i, (frame_idx, polygons, confs) in enumerate(predictions):
+            progress((i + 1 + 2 * total_frames) / (3 * total_frames), f"Uploading predictions for frame {frame_idx}")
+            tator_operator.upload_predictions(frame_idx, polygons, confs)
 
         gr.Info("Processing completed successfully!")
         return "Done."
@@ -332,7 +350,7 @@ def launch_gui():
                         smol = gr.Radio(choices=[True, False], label="SMOL Mode", value=False)
 
                     with gr.Column():
-                        gr.Markdown("Higher values mean less overlap allowed between detections.")
+                        gr.Markdown("Lower values mean less overlap allowed between detections.")
                         iou = gr.Slider(label="IoU Threshold", minimum=0, maximum=1, value=0.7)
 
                         gr.Markdown("Specify the model architecture, either YOLO or RTDETR.")
@@ -381,7 +399,7 @@ def launch_gui():
 
                     with gr.Column():
                         gr.Markdown("Enter the ID of the media file you want to process.")
-                        media_id = gr.Number(label="Media ID", value=4346964)
+                        media_id = gr.Number(label="Media ID", value=None)
 
             with gr.Group():
                 gr.Markdown("## Model Parameters")
@@ -392,11 +410,11 @@ def launch_gui():
                         conf = gr.Slider(label="Confidence Threshold", minimum=0, maximum=1, value=0.5)
 
                     with gr.Column():
-                        gr.Markdown("Higher values mean less overlap allowed between detections.")
+                        gr.Markdown("Lower values mean less overlap allowed between detections.")
                         iou = gr.Slider(label="IoU Threshold", minimum=0, maximum=1, value=0.7)
 
                         gr.Markdown("Specify the model architecture, either YOLO or RTDETR.")
-                        model_type = gr.Radio(choices=["YOLO", "RTDETR"], value="YOLO", label="Model Type")
+                        model_type = gr.Radio(choices=["YOLO", "RTDETR"], value="RTDETR", label="Model Type")
 
                 gr.Markdown("Upload the file containing the trained model weights.")
                 model_weights = gr.File(label="Model Weights")

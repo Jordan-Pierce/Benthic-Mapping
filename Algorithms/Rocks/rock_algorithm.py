@@ -155,12 +155,15 @@ class RockAlgorithm:
             else:
                 raise Exception(f"ERROR: Model type {self.config['model_type']} not recognized!")
 
+        except Exception as e:
+            raise Exception(f"ERROR: Could not load model!\n{e}")
+
+        try:
             # Load the SAM model (sam_b, sam_l, sam_h)
             # This will download the file if it doesn't exist
             self.sam_model = SAM(self.config["sam_model_path"])
-
         except Exception as e:
-            raise Exception(f"ERROR: Could not load model!\n{e}")
+            raise Exception(f"ERROR: Could not load SAM model!\n{e}")
 
         print(f"NOTE: Successfully loaded weights {model_path}")
 

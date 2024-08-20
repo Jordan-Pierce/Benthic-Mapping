@@ -1,10 +1,12 @@
 import os
+from typing import Tuple, List, Any, Optional
 
 import cv2
 import numpy as np
 
 import torch
 import supervision as sv
+from numpy import ndarray
 from skimage.draw import polygon
 from ultralytics import YOLO
 from ultralytics import RTDETR
@@ -65,7 +67,6 @@ class CoralAlgorithm:
 
         :param config:
         """
-
         self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
         self.config = config
 
@@ -98,7 +99,7 @@ class CoralAlgorithm:
         print(f"NOTE: Successfully loaded weights {model_path}")
 
     @torch.no_grad()
-    def infer(self, original_frame) -> list:
+    def infer(self, original_frame):
         """
         Performs inference on a single frame; if using smol mode, will use the
         slicer callback function to perform SAHI using supervision (detections will
@@ -127,8 +128,9 @@ class CoralAlgorithm:
 
         # Get the boxes
         bboxes = detections.xyxy
+        conf = detections.confidence.tolist()
 
         # Convert to points
         polygon_points = polygons_to_points(bboxes, original_frame)
 
-        return polygon_points
+        return polygon_points, conf

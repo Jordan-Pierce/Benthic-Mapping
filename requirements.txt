@@ -3,17 +3,14 @@ dill
 tqdm
 numpy
 pandas
-scipy
 matplotlib
 opencv-python
 opencv-contrib-python
 opencv-python-headless
-scikit_image
 tator
 ffmpeg-python
 ultralytics
 supervision
-roboflow
 sahi
 autodistill
 autodistill-yolov8

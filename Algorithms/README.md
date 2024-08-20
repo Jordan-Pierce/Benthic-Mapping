@@ -1,7 +1,7 @@
 # App
 
 The `app.py` is a python script with a `gradio` interface that will allow you to test the functionality of the Great 
-Lakes Rock Detector.
+Lakes Rock Detector, and the MDBC Coral Automatic Recognition and Locator (CARL) model.
 
 ## Installation
 
@@ -48,6 +48,9 @@ python Algorithms/app.py
 
 ### Model Weights
 
-Download the latest version of the weights (.pth), available to NOAA users:
+Download the latest version of the weights (.pt) for the Rock Algorithm:
 - YOLO - [06/26/2024](https://drive.google.com/file/d/1vcsO9rQr0lScHuBLISBR72Xgr1kpYIec/view?usp=drive_link)
 - RTDETR - [06/30/2024](https://drive.google.com/file/d/1qotY6xEF5Y3cOknseGROEqtpUa3AnVZ2/view?usp=drive_link)
+
+Download the latest version of the weights (.pt) for the CARL Algorithm:
+- RTDETR - [07/10/2024](https://drive.google.com/file/d/1PQFi6a1hOASMs1LTn2I3_-2mrk0qMeLw/view?usp=drive_link)
