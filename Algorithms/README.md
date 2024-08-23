@@ -22,6 +22,7 @@ python Algorithms/app.py
 In the terminal you should be provided with a local host address that if clicked on, will open your web-browser to the 
 `gradio` interface.
 
+To get back to the `app.py`, perform the following
 ```bash
 # cmd
 
