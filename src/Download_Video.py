@@ -94,7 +94,11 @@ class VideoDownloader:
                 output_video_path = f"{self.raw_video_dir}/{media_name}_converted.{ext}"
                 print(f"NOTE: Downloading {media.name}...")
 
-                for progress in tator.util.download_media(self.api, media, output_video_path):
+                for progress in tator.util.download_media(self.api,
+                                                          media,
+                                                          output_video_path,
+                                                          media.height,
+                                                          "streaming"):
                     print(f"NOTE: Download progress: {progress}%")
 
                 if os.path.exists(output_video_path):

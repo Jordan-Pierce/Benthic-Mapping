@@ -15,14 +15,6 @@ from Coral.coral_algorithm import CoralAlgorithm
 
 class TatorOperator:
     def __init__(self, token, project_id, media_id):
-        """
-
-        :param token:
-        :param project_id:
-        :param media_id:
-        :param start_at:
-        :param end_at:
-        """
         self.token = token
         self.project_id = project_id
         self.media_id = media_id
@@ -35,6 +27,73 @@ class TatorOperator:
 
         except Exception as e:
             raise Exception(f"ERROR: Could not connect to TATOR.\n{e}")
+
+    def download_media(self, output_dir):
+        """
+        Download the media (video) from Tator.
+
+        :param output_dir: Directory to save the downloaded video.
+        :return: Path to the downloaded video file.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+        media_name = self.media.name.replace(":", "_")
+        output_video_path = os.path.join(output_dir, f"{media_name}")
+
+        try:
+            print(f"NOTE: Downloading {self.media.name}...")
+            for progress in tator.util.download_media(self.api,
+                                                      self.media,
+                                                      output_video_path,
+                                                      self.media.height,
+                                                      "streaming"):
+                print(f"NOTE: Download progress: {progress}%")
+
+            if os.path.exists(output_video_path):
+                print(f"NOTE: Media {self.media.name} downloaded successfully")
+                return output_video_path
+            else:
+                raise Exception(f"ERROR: Media {self.media.name} did not download successfully")
+
+        except Exception as e:
+            raise Exception(f"ERROR: Could not download media {self.media_id}: {e}")
+
+    def extract_frame(self, video_path, frame_idx):
+        """
+        Get a specific frame from the downloaded video.
+
+        :param video_path: Path to the downloaded video file.
+        :param frame_idx: Index of the frame to retrieve.
+        :return: The specified frame.
+        """
+        try:
+            cap = cv2.VideoCapture(video_path)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            cap.release()
+
+            if not ret:
+                raise Exception(f"ERROR: Could not read frame {frame_idx} from {video_path}")
+
+            return frame
+
+        except Exception as e:
+            raise Exception(f"ERROR: Could not get frame {frame_idx} from {video_path}.\n{e}")
+
+    def delete_media(self, media_path):
+        """
+        Delete the downloaded media file.
+
+        :param media_path: Path to the downloaded video file.
+        """
+        try:
+            if os.path.exists(media_path):
+                os.remove(media_path)
+                print(f"NOTE: Deleted media file {media_path}")
+            else:
+                print(f"WARNING: Media file {media_path} does not exist")
+
+        except Exception as e:
+            raise Exception(f"ERROR: Could not delete media file {media_path}: {e}")
 
     @staticmethod
     def parse_frame_ranges(frame_ranges_str):
@@ -114,8 +173,8 @@ class TatorOperator:
                 'height': h,
                 'frame': frame_idx,
                 'attributes': {
-                    # "ScientificName": "",
-                    # "CommonName": "",
+                    "ScientificName": "",
+                    "CommonName": "",
                     "Score": score,
                     "Needs Review": True
                 },
@@ -281,25 +340,23 @@ def run_coral_algorithm(token,
             "model_type": str(model_type),
             "model_path": str(model_weights),
         }
-
+        # Initialize the Coral Algorithm
         coral_algo = CoralAlgorithm(config)
         progress(0, "Initializing algorithm...")
         coral_algo.initialize()
 
+        # Parse the frame ranges
         frames_to_process = tator_operator.parse_frame_ranges(frame_ranges)
         total_frames = len(frames_to_process)
 
-        frames = []
         predictions = []
 
-        # Download frames
-        for i, frame_idx in enumerate(frames_to_process):
-            progress((i + 1) / (3 * total_frames), f"Downloading frame {frame_idx}")
-            frame = tator_operator.download_frame(frame_idx)
-            frames.append((frame_idx, frame))
+        # Download media
+        video_path = tator_operator.download_media(output_dir="temp_videos")
 
-        # Perform inference
-        for i, (frame_idx, frame) in enumerate(frames):
+        # Extract frames and perform inference
+        for i, frame_idx in enumerate(frames_to_process):
+            frame = tator_operator.extract_frame(video_path, frame_idx)
             progress((i + 1 + total_frames) / (3 * total_frames), f"Making predictions for frame {frame_idx}")
             polygons, confs = coral_algo.infer(frame)
             predictions.append([frame_idx, polygons, confs])
@@ -308,6 +365,9 @@ def run_coral_algorithm(token,
         for i, (frame_idx, polygons, confs) in enumerate(predictions):
             progress((i + 1 + 2 * total_frames) / (3 * total_frames), f"Uploading predictions for frame {frame_idx}")
             tator_operator.upload_predictions(frame_idx, polygons, confs)
+
+        # Delete media
+        tator_operator.delete_media(video_path)
 
         gr.Info("Processing completed successfully!")
         return "Done."

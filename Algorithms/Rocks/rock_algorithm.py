@@ -87,6 +87,7 @@ def mask_to_polygons(masks):
 
 def polygons_to_points(polygons, image):
     """
+    Convert polygon points to normalized coordinates relative to the image dimensions.
 
     :param polygons: List of points
     :param image: numpy array
@@ -103,6 +104,10 @@ def polygons_to_points(polygons, image):
         # Normalize x and y coordinates
         normalized_polygon_x = polygon_x / image.shape[1]
         normalized_polygon_y = polygon_y / image.shape[0]
+
+        # Ensure normalized coordinates are within bounds [0, 1]
+        normalized_polygon_x = np.clip(normalized_polygon_x, 0, 1)
+        normalized_polygon_y = np.clip(normalized_polygon_y, 0, 1)
 
         # Create a new list with normalized coordinates for the current polygon
         normalized_points = np.column_stack((normalized_polygon_x, normalized_polygon_y)).tolist()
