@@ -27,12 +27,12 @@ conda_exe = shutil.which('conda')
 # ----------------------------------------------
 # Python version
 # ----------------------------------------------
-# python_v = f"{sys.version_info[0]}{sys.version_info[1]}"
-# python_sub_v = int(sys.version_info[1])
-#
-# # check python version
-# if python_sub_v != 8 or python_sub_v != 9:
-#     raise Exception(f"Only Python 3.8 and 3.9 are supported.")
+python_v = f"{sys.version_info[0]}.{sys.version_info[1]}"
+python_sub_v = int(sys.version_info[1])
+
+# check python version
+if python_sub_v not in [8, 9]:
+    raise Exception(f"Only Python 3.8 and 3.9 are supported.")
 
 # ---------------------------------------------
 # Requirements file

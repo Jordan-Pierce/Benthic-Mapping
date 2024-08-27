@@ -2,6 +2,9 @@
 *.pth
 *.pt
 *.pyc
+*egg-info
 /src/runs/
 /Data
 /Models
+/Algorithms/build
+/Algorithms/dist

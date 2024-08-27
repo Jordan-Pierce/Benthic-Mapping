@@ -3,8 +3,10 @@ import os
 import cv2
 import numpy as np
 
-import torch
+from torch.cuda import is_available
+
 import supervision as sv
+
 from ultralytics import SAM
 from ultralytics import YOLO
 from ultralytics import RTDETR
@@ -125,14 +127,13 @@ class RockAlgorithm:
 
         :param config:
         """
-
-        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        self.config = config
-
         self.sam_model = None
         self.yolo_model = None
-
         self.slicer = None
+
+        self.config = config
+        self.device = 'cuda:0' if is_available() else 'cpu'
+        print("NOTE: Using device", self.device)
 
     def initialize(self):
         """
@@ -185,7 +186,6 @@ class RockAlgorithm:
                                              overlap_ratio_wh=overlap_ratio_wh,
                                              overlap_filter_strategy=sv.OverlapFilter.NON_MAX_MERGE)
 
-    @torch.no_grad()
     def slicer_callback(self, image_slice):
         """
         Callback function to perform SAHI using supervision
@@ -243,7 +243,6 @@ class RockAlgorithm:
 
         return detections
 
-    @torch.no_grad()
     def infer(self, original_frame) -> list:
         """
         Performs inference on a single frame; if using smol mode, will use the

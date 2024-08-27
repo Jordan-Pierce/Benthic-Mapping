@@ -205,7 +205,7 @@ def run_rock_algorithm(token,
             "smol": bool(smol),
             "model_type": str(model_type),
             "model_path": str(model_weights),
-            "sam_model_path": "sam_l.pt"
+            "sam_model_path": "sam2_b.pt"
         }
 
         rock_algo = RockAlgorithm(config)
@@ -215,13 +215,24 @@ def run_rock_algorithm(token,
         frames_to_process = tator_operator.parse_frame_ranges(frame_ranges)
         total_frames = len(frames_to_process)
 
+        frames = []
+        predictions = []
+
+        # Download frames
         for i, frame_idx in enumerate(frames_to_process):
-            progress((i + 1) / total_frames, f"Processing frame {frame_idx}")
-            progress((i + 1) / total_frames, f"Downloading frame {frame_idx}")
+            progress((i + 1) / (3 * total_frames), f"Downloading frame {frame_idx}")
             frame = tator_operator.download_frame(frame_idx)
-            progress((i + 1) / total_frames, f"Making predictions for frame {frame_idx}")
+            frames.append((frame_idx, frame))
+
+        # Perform inference
+        for i, (frame_idx, frame) in enumerate(frames):
+            progress((i + 1 + total_frames) / (3 * total_frames), f"Making predictions for frame {frame_idx}")
             polygons = rock_algo.infer(frame)
-            progress((i + 1) / total_frames, f"Uploading predictions for frame {frame_idx}")
+            predictions.append([frame_idx, polygons])
+
+        # Upload predictions
+        for i, (frame_idx, polygons) in enumerate(predictions):
+            progress((i + 1 + 2 * total_frames) / (3 * total_frames), f"Uploading predictions for frame {frame_idx}")
             tator_operator.upload_predictions(frame_idx, polygons, confs=None)
 
         gr.Info("Processing completed successfully!")
@@ -359,6 +370,10 @@ def launch_gui():
                 gr.Markdown("Upload the file containing the trained model weights.")
                 model_weights = gr.File(label="Model Weights")
 
+            gr.Markdown("### Model Weights")
+            gr.Markdown("[YOLO - 06/26/2024](https://drive.google.com/file/d/1vcsO9rQr0lScHuBLISBR72Xgr1kpYIec/view?usp=drive_link)")
+            gr.Markdown("[RTDETR - 06/30/2024](https://drive.google.com/file/d/1qotY6xEF5Y3cOknseGROEqtpUa3AnVZ2/view?usp=drive_link)")
+
             run_button = gr.Button("Run")
 
             gr.Markdown("The results and any messages from the algorithm will be displayed here.")
@@ -419,6 +434,9 @@ def launch_gui():
                 gr.Markdown("Upload the file containing the trained model weights.")
                 model_weights = gr.File(label="Model Weights")
 
+            gr.Markdown("### Model Weights")
+            gr.Markdown("[RTDETR - 07/10/2024](https://drive.google.com/file/d/1PQFi6a1hOASMs1LTn2I3_-2mrk0qMeLw/view?usp=drive_link)")
+
             run_button = gr.Button("Run")
 
             gr.Markdown("The results and any messages from the algorithm will be displayed here.")
@@ -438,7 +456,7 @@ def launch_gui():
                 outputs=output
             )
 
-    app.launch(share=True)
+    app.launch(share=False)
 
 
 if __name__ == "__main__":

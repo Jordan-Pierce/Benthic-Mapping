@@ -15,3 +15,5 @@ sahi
 autodistill
 autodistill-yolov8
 autodistill_grounding_dino
+gradio
+scikit-image

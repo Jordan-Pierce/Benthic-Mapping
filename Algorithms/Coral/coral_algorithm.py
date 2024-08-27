@@ -1,16 +1,11 @@
 import os
-from typing import Tuple, List, Any, Optional
 
-import cv2
-import numpy as np
+from torch.cuda import is_available
 
-import torch
 import supervision as sv
-from numpy import ndarray
-from skimage.draw import polygon
+
 from ultralytics import YOLO
 from ultralytics import RTDETR
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Functions
@@ -67,10 +62,11 @@ class CoralAlgorithm:
 
         :param config:
         """
-        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        self.config = config
-
         self.yolo_model = None
+
+        self.config = config
+        self.device = 'cuda:0' if is_available() else 'cpu'
+        print("NOTE: Using device", self.device)
 
     def initialize(self):
         """
@@ -98,7 +94,6 @@ class CoralAlgorithm:
 
         print(f"NOTE: Successfully loaded weights {model_path}")
 
-    @torch.no_grad()
     def infer(self, original_frame):
         """
         Performs inference on a single frame; if using smol mode, will use the

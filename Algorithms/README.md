@@ -10,27 +10,33 @@ installed on your machine if it is not already (this can be done by the user). A
 terminal`, navigate to a directory of your choosing, and perform the following commands:
 ```bash
 # cmd
+
 git clone https://github.com/Jordan-Pierce/Benthic-Mapping.git
 
-cd Benthic-Mapping
+cd Benthic-Mapping/Algorithms
  
 conda create --name benthic-mapping python=3.8 -y
 conda activate benthic-mapping
-python install.py
-python Algorithms/app.py
-```
-In the terminal you should be provided with a local host address that if clicked on, will open your web-browser to the 
-`gradio` interface.
 
-To get back to the `app.py`, perform the following
+pip install -e .
+```
+
+*Optionally*, if you have a `NVIDIA GPU`, you can install the GPU version of PyTorch by running the following command:
 ```bash
 # cmd
 
-cd path/to/Benthic-Mapping
-
-conda activate benthic-mapping
-python Algorithms/app.py
+conda install cuda-nvcc -c nvidia/label/cuda-11.8.0 -y
+conda install cudatoolkit=11.8 -c nvidia/label/cuda-11.8.0 -y
+pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
 ```
+Once this has finished installing, you can run the `app.py` script by performing the following command:
+```bash
+# cmd
+
+benthic-mapping
+```
+
+You'll be presented with a local URL that you can paste into your browser to access the app.
 
 ## Parameters
 
@@ -49,9 +55,5 @@ python Algorithms/app.py
 
 ### Model Weights
 
-Download the latest version of the weights (.pt) for the Rock Algorithm:
-- YOLO - [06/26/2024](https://drive.google.com/file/d/1vcsO9rQr0lScHuBLISBR72Xgr1kpYIec/view?usp=drive_link)
-- RTDETR - [06/30/2024](https://drive.google.com/file/d/1qotY6xEF5Y3cOknseGROEqtpUa3AnVZ2/view?usp=drive_link)
-
-Download the latest version of the weights (.pt) for the CARL Algorithm:
-- RTDETR - [07/10/2024](https://drive.google.com/file/d/1PQFi6a1hOASMs1LTn2I3_-2mrk0qMeLw/view?usp=drive_link)
+Download the latest version of the weights (.pt) for each of the algorithms before running the app. The weights can be
+found after launching the app; please download and upload the weights to the app before running the algorithm.
