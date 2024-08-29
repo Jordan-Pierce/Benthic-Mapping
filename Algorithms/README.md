@@ -3,35 +3,46 @@
 The `app.py` is a python script with a `gradio` interface that will allow you to test the functionality of the Great 
 Lakes Rock Detector, and the MDBC Coral Automatic Recognition and Locator (CARL) model.
 
-## Installation
+### **How to Install**
 
-To install, ensure that [miniconda](https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe) is 
-installed on your machine if it is not already (this can be done by the user). After it is installed, open a `Anaconda
-terminal`, navigate to a directory of your choosing, and perform the following commands:
+##### GitHub Repository
+First, clone the repo:
 ```bash
 # cmd
 
+# Clone and enter the repository
 git clone https://github.com/Jordan-Pierce/Benthic-Mapping.git
-
 cd Benthic-Mapping/Algorithms
- 
+```
+##### Anaconda
+Then set up an `Anaconda` environment:
+```bash
+# cmd
+
+# Create and activate an environment
 conda create --name benthic-mapping python=3.8 -y
 conda activate benthic-mapping
-
-pip install -e .
 ```
-
-*Optionally*, if you have a `NVIDIA GPU`, you can install the GPU version of PyTorch by running the following command:
+##### CUDA
+Once this has finished, if you have CUDA, you can install the versions of `cuda-nvcc` and `cudatoolkit` that you need,
+and then install the corresponding versions `torch` and `torchvision`:
 ```bash
 # cmd
 
+# Example for CUDA 11.8
 conda install cuda-nvcc -c nvidia/label/cuda-11.8.0 -y
 conda install cudatoolkit=11.8 -c nvidia/label/cuda-11.8.0 -y
+
+# Example for torch 2.0.0 and torchvision 0.15.1 w/ CUDA 11.8
 pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
 ```
-Once this has finished installing, you can run the `app.py` script by performing the following command:
+See here for more details on [PyTorch](https://pytorch.org/get-started/locally/) versions.
+##### Install
+Finally, run the setup script to install the application:
 ```bash
 # cmd
+
+pip install -e .
 
 benthic-mapping
 ```
