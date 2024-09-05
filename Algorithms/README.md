@@ -32,7 +32,7 @@ Finally, run the setup script to install the application:
 ```bash
 # cmd
 
-pip install "pip install git+https://github.com/Jordan-Pierce/Benthic-Mapping.git#subdirectory=Algorithms"
+pip install "git+https://github.com/Jordan-Pierce/Benthic-Mapping.git#subdirectory=Algorithms"
 
 benthic-mapping
 ```

@@ -1,1 +1,1 @@
-from app import launch_gui
+from .app import launch_gui
