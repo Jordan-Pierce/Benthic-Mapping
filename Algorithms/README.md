@@ -4,18 +4,8 @@ The `app.py` is a python script with a `gradio` interface that will allow you to
 Lakes Rock Detector, and the MDBC Coral Automatic Recognition and Locator (CARL) model.
 
 ### **How to Install**
-
-##### GitHub Repository
-First, clone the repo:
-```bash
-# cmd
-
-# Clone and enter the repository
-git clone https://github.com/Jordan-Pierce/Benthic-Mapping.git
-cd Benthic-Mapping/Algorithms
-```
 ##### Anaconda
-Then set up an `Anaconda` environment:
+First, set up an `Anaconda` environment:
 ```bash
 # cmd
 
@@ -42,7 +32,7 @@ Finally, run the setup script to install the application:
 ```bash
 # cmd
 
-pip install -e .
+pip install "pip install git+https://github.com/Jordan-Pierce/Benthic-Mapping.git#subdirectory=Algorithms"
 
 benthic-mapping
 ```
