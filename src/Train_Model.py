@@ -1,10 +1,13 @@
 import os
+import glob
 import datetime
 import argparse
 import traceback
 
 from ultralytics import YOLO
 from ultralytics import RTDETR
+
+from Common import create_training_yaml
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -23,13 +26,13 @@ class ModelTrainer:
         self.root = None
         self.run_dir = None
 
-        self.training_data = args.training_data
         self.num_epochs = args.epochs
         self.weights = args.weights
 
         # Updates root and run
         self.set_root_directory(args.root_dir)
         self.set_run_directory(args.run_dir)
+        self.create_training_data(args.training_data)
 
         self.run_name = self.get_run_name()
         self.target_model = self.load_model()
@@ -64,6 +67,22 @@ class ModelTrainer:
         :return: Generated run name
         """
         return f"{self.get_now()}_{self.args.task}_{self.weights.split('.')[0]}"
+
+    def create_training_data(self, training_data):
+        """
+
+        :return:
+        """
+        # Check if training data is already a YAML file
+        if training_data.endswith(".yaml"):
+            self.training_data = training_data
+            return
+        if os.path.isdir(training_data):
+            yaml_files = glob.glob(f"{training_data}/**/data.yaml")
+            if not yaml_files:
+                raise FileNotFoundError(f"No 'data.yaml' files found in '{training_data}'")
+
+            self.training_data = create_training_yaml(yaml_files, self.run_dir)
 
     def load_model(self):
         """
@@ -121,6 +140,18 @@ class ModelTrainer:
         print("Training completed.")
         return results
 
+    def evaluate_model(self):
+        try:
+
+            results = self.target_model.val(
+                data=self.training_data,
+                split='test',
+                save_json=True,
+                plots=True
+            )
+        except Exception as e:
+            print(f"WARNING: Failed to evaluate model.\n{e}")
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Main
@@ -134,7 +165,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train a model for object detection.")
 
     parser.add_argument("--training_data", type=str, required=True,
-                        help="Path to the training data YAML file")
+                        help="Path to the training data (YAML, or Folder)")
 
     parser.add_argument("--epochs", type=int, default=50,
                         help="Number of training epochs")
@@ -166,7 +197,7 @@ def main():
     parser.add_argument("--patience", type=int, default=10,
                         help="Patience for early stopping")
 
-    parser.add_argument("--batch", type=float, default=0.8,
+    parser.add_argument("--batch", type=float, default=0.5,
                         help="Batch size as a fraction of GPU memory")
 
     parser.add_argument("--save_period", type=int, default=10,

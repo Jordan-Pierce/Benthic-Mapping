@@ -74,7 +74,7 @@ def create_training_yaml(yaml_files: List[str], output_dir: str):
     :return:
     """
     # Initialize variables to store combined data
-    combined_data = {'names': [], 'nc': 0, 'train': [], 'val': []}
+    combined_data = {'names': [], 'nc': 0, 'train': [], 'val': [], 'test': []}
 
     try:
         # Iterate through each YAML file
@@ -92,6 +92,9 @@ def create_training_yaml(yaml_files: List[str], output_dir: str):
                 # Combine 'train' and 'val' paths
                 combined_data['train'].append(data['train'])
                 combined_data['val'].append(data['val'])
+
+                if 'test' in data:
+                    combined_data['test'].append(data['test'])
 
         # Create a new YAML file with the combined data
         output_file_path = f"{output_dir}/training_data.yaml"
