@@ -164,7 +164,7 @@ class TatorOperator:
             x, y, w, h = bbox
 
             return {
-                'type': 440,  # Detection Box
+                'type': 247,  # Detection Box (440), Coral / Inverts (247)
                 'media_id': self.media_id,
                 'version_id': 408,  # Imported Data
                 'x': x,
