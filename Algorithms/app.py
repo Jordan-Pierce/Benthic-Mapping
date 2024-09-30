@@ -496,6 +496,7 @@ def launch_gui():
 
             gr.Markdown("### Model Weights")
             gr.Markdown("[RTDETR - 07/10/2024](https://drive.google.com/file/d/1PQFi6a1hOASMs1LTn2I3_-2mrk0qMeLw/view?usp=drive_link)")
+            gr.Markdown("[RTDETR - 09/26/2024](https://drive.google.com/file/d/12zxtizsQhwINYMlm0C-hc6gFKAAbG1h5/view?usp=drive_link)")
 
             run_button = gr.Button("Run")
 
