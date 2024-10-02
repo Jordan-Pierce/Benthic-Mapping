@@ -7,5 +7,5 @@ opencv-python-headless
 scikit_image
 tator
 supervision
-ultralytics
+ultralytics >= 8.3.0
 sahi

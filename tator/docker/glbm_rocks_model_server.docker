@@ -1,0 +1,54 @@
+FROM nvidia/cuda:11.8.0-base-ubuntu22.04
+
+# OS dependencies
+RUN apt update && \
+    apt upgrade -y && \
+    apt install -y \
+        python3 \
+        python3-pip \
+        wget \
+        libglu1-mesa \
+        libgl1-mesa-glx \
+        libcurl4 \
+        libsm6 \
+        libxext6 \
+        libglib2.0-0 \
+        ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set the workdir
+WORKDIR /workdir
+
+# Copy over the requirements
+COPY tator/docker/requirements.txt /workdir/
+
+# Install dependencies
+RUN python3 -m pip install -U pip
+RUN python3 -m pip install -r requirements.txt
+RUN pip install redis
+
+RUN mkdir /repo/
+RUN mkdir /repo/Algorithms
+RUN mkdir /repo/Algorithms/Rocks
+COPY Algorithms/Rocks /repo/Algorithms/Rocks
+
+RUN mkdir /repo/Data
+COPY Data/best.pt /repo/Data
+
+RUN mkdir /repo/tator
+RUN mkdir /repo/tator/scripts
+RUN mkdir /repo/tator/utilities
+COPY tator/scripts /repo/tator/scripts
+COPY tator/utilities /repo/tator/utilities
+
+# Create a data directory
+RUN mkdir -p /workdir/Data
+
+# Set the working directory
+WORKDIR /repo/
+
+# Set the algorithm specific environment variable
+ENV ROCK_MASK_ALGO_CONFIG="/repo/Algorithms/Rocks/configs/rock_config_v1.1.0.yaml"
+
+# Run the model server
+CMD ["python3", "/repo/tator/scripts/run_model_server.py"]
