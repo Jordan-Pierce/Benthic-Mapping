@@ -31,8 +31,7 @@ db = redis.StrictRedis(
     db=os.getenv("REDIS_DB"))
 
 def base64_decode_image(a, dtype, shape):
-    a = bytes(a, encoding="utf-8")
-    a = np.frombuffer(base64.decodestring(a), dtype=dtype)
+    a = np.frombuffer(base64.b64decode(a), dtype=dtype)
     a = a.reshape(shape)
     return a
 
@@ -54,12 +53,12 @@ def process_input_info(input_info):
     img_width = input_info["width"]
     img_height = input_info["height"]
     img0 = base64_decode_image(input_info["image"],
-        np.uint8,
+        np.float32,
         (1, img_height, img_width, 3))
     img0 = np.squeeze(img0)
     img = np.ascontiguousarray(img0)
 
-    id = q["id"]
+    id = input_info["id"]
 
     return id, img
 
@@ -93,7 +92,7 @@ def main():
             db.set(id, json.dumps(points))
 
         except KeyboardInterrupt:
-            logger.info("Stopped")
+            logger.info("stopped")
 
 if __name__ == "__main__":
     main()

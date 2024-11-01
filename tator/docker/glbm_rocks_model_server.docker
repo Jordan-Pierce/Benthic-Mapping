@@ -14,6 +14,7 @@ RUN apt update && \
         libxext6 \
         libglib2.0-0 \
         ffmpeg \
+        vim \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the workdir
@@ -48,7 +49,7 @@ RUN mkdir -p /workdir/Data
 WORKDIR /repo/
 
 # Set the algorithm specific environment variable
-ENV ROCK_MASK_ALGO_CONFIG="/repo/Algorithms/Rocks/configs/rock_config_v1.1.0.yaml"
+ENV ROCK_MASK_ALGO_CONFIG="/repo/Algorithms/Rocks/configs/rock_config_v1.4.0.yaml"
 
 # Run the model server
 CMD ["python3", "/repo/tator/scripts/run_model_server.py"]

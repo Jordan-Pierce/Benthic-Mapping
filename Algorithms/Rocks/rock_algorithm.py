@@ -1,5 +1,5 @@
+import datetime
 import os
-
 import cv2
 import numpy as np
 
@@ -23,11 +23,12 @@ def mask_image(image, masks):
     :return:
     """
     masked_image = image.copy()
+    combined_masks = np.zeros((image.shape[0], image.shape[1]), np.uint8)
     for mask in masks:
-        masked_image[mask] = 0
+        combined_masks = np.logical_or(combined_masks,mask).astype(np.uint8)
+    masked_image[combined_masks == 1] = 0
 
     return masked_image
-
 
 def calculate_slice_parameters(height, width, slices_x=2, slices_y=2, overlap_percentage=0.3):
     """
@@ -198,11 +199,11 @@ class RockAlgorithm:
         :param image_slice:
         :return:
         """
-        # Get the results of the slice
-        results = self.yolo_model(image_slice, verbose=False)[0]
+
+        results = self.yolo_model(image_slice, verbose=False, device=self.device)[0]
         # Convert results to supervision standards
         results = sv.Detections.from_ultralytics(results)
-
+        print(f"...done slicer_callback")
         return results
 
     def apply_smol(self, frame, detections):
@@ -214,6 +215,9 @@ class RockAlgorithm:
         :param detections:
         :return:
         """
+
+        print(f"[{datetime.datetime.now()} Applying SAHI")
+
         if self.slicer is None:
             # Setup on the first frame
             self.setup_slicer(frame)
@@ -221,13 +225,15 @@ class RockAlgorithm:
         if detections:
             # Mask out the frame where previous detections were
             masked_frame = mask_image(frame, detections.mask)
-            # Make predictions on the masked frame
+            print(f"[{datetime.datetime.now()} Created mask image")
             smol_detections = self.slicer(masked_frame)
-            # Get SAM masks for the smol detections (original frame)
+            print(f"[{datetime.datetime.now()} Created detections for each slice")
             smol_detections = self.apply_sam(masked_frame, smol_detections)
+            print(f"[{datetime.datetime.now()} Applied SAM on sliced detections")
 
             if smol_detections:
                 # If any smol detections, merge
+                print(f"[{datetime.datetime.now()} Merging SMOL detections with initial detections")
                 detections = sv.Detections.merge([detections, smol_detections])
 
         return detections
@@ -239,13 +245,15 @@ class RockAlgorithm:
         :param detections:
         :return:
         """
+        print(f"[{datetime.datetime.now()}] Applying SAM")
         if detections:
             # Pass bboxes to SAM, store masks in detections
             bboxes = detections.xyxy
-            masks = self.sam_model(frame, bboxes=bboxes)[0]
+            masks = self.sam_model(frame, bboxes=bboxes, device=self.device)[0]
             masks = masks.masks.data.cpu().numpy()
             detections.mask = masks.astype(np.uint8)
 
+        print(f"[{datetime.datetime.now()}] ...done")
         return detections
 
     def infer(self, original_frame) -> list:
@@ -263,16 +271,20 @@ class RockAlgorithm:
         conf = self.config["model_confidence_threshold"]
 
         # Perform detection normally
+        print(f"[{datetime.datetime.now()}] Performing rock detection on original image")
         detections = self.yolo_model(original_frame,
                                      iou=iou,
                                      conf=conf,
                                      device=self.device,
                                      verbose=False)[0]
+        print(f"[{datetime.datetime.now()}] ...done")
 
         # Convert results to supervision standards
         detections = sv.Detections.from_ultralytics(detections)
         # Perform segmentations with bboxes
+        print(f"[{datetime.datetime.now()}] Perofmring SAM on detections")
         detections = self.apply_sam(original_frame, detections)
+        print(f"[{datetime.datetime.now()}] ...done")
 
         if self.config["smol"]:
             # Perform detections / segmentations using SAHI

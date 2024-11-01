@@ -112,7 +112,7 @@ def script_main() -> None:
             "version_id": version.id,
             "points": points,
             "frame": frame,
-            "attributes": {"Label": "Rock"}
+            "attributes": {"Label": "Rock", "Algorithm Generated": True}
         }
         localization_specs.append(spec)
 

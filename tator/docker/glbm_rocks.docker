@@ -14,13 +14,14 @@ RUN apt update && \
         libxext6 \
         libglib2.0-0 \
         ffmpeg \
+        vim \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the workdir
 WORKDIR /workdir
 
 # Copy over the requirements
-COPY requirements.txt /workdir/
+COPY tator/docker/requirements.txt /workdir/
 
 # Install dependencies
 RUN python3 -m pip install -U pip
