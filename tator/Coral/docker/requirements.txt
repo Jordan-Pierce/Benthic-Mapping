@@ -1,0 +1,12 @@
+wheel
+dill
+numpy
+Pillow
+opencv-python
+opencv-contrib-python
+opencv-python-headless
+scikit_image
+tator
+supervision == 0.22.0
+ultralytics == 8.2.73
+sahi
