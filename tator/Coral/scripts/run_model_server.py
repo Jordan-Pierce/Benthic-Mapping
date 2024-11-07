@@ -79,7 +79,7 @@ def main():
     with open(os.getenv("CORAL_ALGO_CONFIG"), "r") as file_handle:
         algo_config = yaml.safe_load(file_handle)
 
-    algo = RockAlgorithm(config=algo_config)
+    algo = CoralAlgorithm(config=algo_config)
     algo.initialize()
 
     logger.info("Coral algorithm initialized, ready for input.")
