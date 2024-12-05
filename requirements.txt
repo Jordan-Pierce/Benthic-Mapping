@@ -10,7 +10,7 @@ opencv-python-headless
 tator
 ffmpeg-python
 ultralytics
-supervision
+supervision==8.3.0
 sahi
 autodistill
 autodistill-yolov8
