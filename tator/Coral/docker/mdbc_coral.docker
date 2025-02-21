@@ -29,8 +29,8 @@ RUN python3 -m pip install -r requirements.txt
 
 RUN mkdir /repo/
 RUN mkdir /repo/Algorithms
-RUN mkdir /repo/Algorithms/Rocks
-COPY Algorithms/Rocks /repo/Algorithms/Rocks
+RUN mkdir /repo/Algorithms/Coral
+COPY Algorithms/Coral /repo/Algorithms/Coral
 
 RUN mkdir /repo/Data
 COPY Data/best.pt /repo/Data
@@ -38,7 +38,7 @@ COPY Data/best.pt /repo/Data
 RUN mkdir /repo/tator
 RUN mkdir /repo/tator/scripts
 RUN mkdir /repo/tator/utilities
-COPY tator/scripts /repo/tator/scripts
+COPY tator/Coral/scripts /repo/tator/scripts
 COPY tator/utilities /repo/tator/utilities
 
 # Create a data directory

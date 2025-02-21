@@ -17,10 +17,10 @@ import tator_utilities
 current_dir = Path.cwd()
 parent_dir = current_dir.parents[1]
 algorithm_path = parent_dir.joinpath("Algorithms")
-algorithm_path = algorithm_path.joinpath("Rocks")
+algorithm_path = algorithm_path.joinpath("Coral")
 sys.path.insert(1, str(algorithm_path))
 
-from rock_algorithm import RockAlgorithm
+from coral_algorithm import CoralAlgorithm
 
 def parse_args() -> argparse.Namespace:
     """ Process script arguments
@@ -29,8 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", type=str, help="Tator URL", required=True)
     parser.add_argument("--token", type=str, help="User's API token", required=True)
     parser.add_argument("--media-id", type=int, help="Media ID to process", required=True)
-    parser.add_argument("--frame", type=int, help="Frame to create rock masks", required=True)
-    parser.add_argument("--version-id", type=int, help="Version ID to put rock localizations in", required=True)
+    parser.add_argument("--frame", type=int, help="Frame to create detection boxes", required=True)
+    parser.add_argument("--version-id", type=int, help="Version ID to put localizations in", required=True)
     parser.add_argument("--algorithm-config", type=str, required=True)
     parser.add_argument("--tator-config", type=str, help="Tator configuration .yaml file", required=True)
     parser.add_argument("--work-folder", type=str, default="/tmp/")
@@ -92,7 +92,7 @@ def script_main() -> None:
 
     # Initialize the algorithm
     print(f"[{datetime.datetime.now()}] Initializing model")
-    algo = RockAlgorithm(config=algo_config)
+    algo = CoralAlgorithm(config=algo_config)
     algo.initialize()
     print(f"[{datetime.datetime.now()}] Finished initialization.")
 
@@ -100,19 +100,24 @@ def script_main() -> None:
     print(f"[{datetime.datetime.now()}] Pulling frame")
     image = frame_buffer.get_single_frame(frame=frame)
     print(f"[{datetime.datetime.now()}] Running inference")
-    all_points = algo.infer(image)
+    all_bboxes, all_confidences = algo.infer(image)
     print(f"[{datetime.datetime.now()}] Finished inference.")
 
     # Create localization specs and upload to Tator
     localization_specs = []
-    for points in all_points:
+    for bbox, conf in zip(all_bboxes, all_confidences):
         spec = {
-            "type": tator_config["rock_poly_type"],
+            "type": tator_config["coral_box_type"],
             "media_id": media.id,
             "version_id": version.id,
-            "points": points,
             "frame": frame,
-            "attributes": {"Label": "Rock", "Algorithm Generated": True}
+            "x": bbox[0],
+            "y": bbox[1],
+            "width": bbox[2],
+            "height": bbox[3],
+            "attributes": {
+                "AlgorithmName": "Algorithm Generated - CARL v1.0.0",
+                "AlgorithmScore": float(conf)}
         }
         localization_specs.append(spec)
 

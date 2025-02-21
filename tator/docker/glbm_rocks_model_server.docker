@@ -26,6 +26,7 @@ COPY tator/docker/requirements.txt /workdir/
 # Install dependencies
 RUN python3 -m pip install -U pip
 RUN python3 -m pip install -r requirements.txt
+RUN pip install redis
 
 RUN mkdir /repo/
 RUN mkdir /repo/Algorithms
@@ -33,7 +34,7 @@ RUN mkdir /repo/Algorithms/Rocks
 COPY Algorithms/Rocks /repo/Algorithms/Rocks
 
 RUN mkdir /repo/Data
-COPY Data/best.pt /repo/Data
+COPY Data/Rocks/best.pt /repo/Data
 
 RUN mkdir /repo/tator
 RUN mkdir /repo/tator/scripts
@@ -45,4 +46,10 @@ COPY tator/utilities /repo/tator/utilities
 RUN mkdir -p /workdir/Data
 
 # Set the working directory
-WORKDIR /repo/tator/scripts
+WORKDIR /repo/
+
+# Set the algorithm specific environment variable
+ENV ROCK_MASK_ALGO_CONFIG="/repo/Algorithms/Rocks/configs/rock_config_v1.4.0.yaml"
+
+# Run the model server
+CMD ["python3", "/repo/tator/scripts/run_model_server.py"]
