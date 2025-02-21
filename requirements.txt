@@ -9,11 +9,10 @@ opencv-contrib-python
 opencv-python-headless
 tator
 ffmpeg-python
-ultralytics
-supervision==8.3.0
+ultralytics==8.3.0
+supervision==0.25.0
 sahi
 autodistill
 autodistill-yolov8
 autodistill_grounding_dino
-gradio
 scikit-image

@@ -2,10 +2,9 @@ from setuptools import setup, find_packages
 
 setup(
     name='benthic-mapping',
-    version='1.0.0',
+    version='0.0.1',
     packages=find_packages(),
     install_requires=[
-        # 'msvc-runtime',
         'wheel',
         'dill',
         'tqdm',
