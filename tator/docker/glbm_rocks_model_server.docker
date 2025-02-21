@@ -34,7 +34,7 @@ RUN mkdir /repo/Algorithms/Rocks
 COPY Algorithms/Rocks /repo/Algorithms/Rocks
 
 RUN mkdir /repo/Data
-COPY Data/best.pt /repo/Data
+COPY Data/Rocks/best.pt /repo/Data
 
 RUN mkdir /repo/tator
 RUN mkdir /repo/tator/scripts

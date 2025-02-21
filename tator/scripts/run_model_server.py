@@ -1,3 +1,5 @@
+import cv2
+import datetime
 import os
 import logging
 import redis
@@ -59,8 +61,9 @@ def process_input_info(input_info):
     img = np.ascontiguousarray(img0)
 
     id = input_info["id"]
+    logger.info(f"...Processing message ID: {id}")
 
-    return id, img
+    return id, img, img_width, img_height
 
 def get_input_info_blocking():
     """
@@ -86,13 +89,24 @@ def main():
 
     while True:
         try:
+            logger.info(f" ... waiting")
             input_info = get_input_info_blocking()
-            id, image = process_input_info(input_info)
-            points = algo.infer(image)
-            db.set(id, json.dumps(points))
+            logger.info(f" ... received message")
+            msg_id, image, image_width, image_height = process_input_info(input_info)
+
+            if image_width > 2000 or image_height > 2000:
+                logger.info(f"Resizing image by half, shape: {image.shape}")
+                image = cv2.resize(image, (image_width // 2, image_height // 2))
+
+            logger.info(image.shape)
+            points = algo.infer(image, logger, image_width, image_height)
+            db.set(msg_id, json.dumps(points))
 
         except KeyboardInterrupt:
             logger.info("stopped")
+
+        except Exception as exc:
+            logger.info(exc)
 
 if __name__ == "__main__":
     main()

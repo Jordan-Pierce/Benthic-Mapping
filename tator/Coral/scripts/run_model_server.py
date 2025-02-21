@@ -88,8 +88,12 @@ def main():
         try:
             input_info = get_input_info_blocking()
             id, image = process_input_info(input_info)
-            points = algo.infer(image)
-            db.set(id, json.dumps(points))
+            all_bboxes, all_confidences = algo.infer(image)
+            result = {
+                "bboxes": all_bboxes,
+                "confidences": all_confidences
+            }
+            db.set(id, json.dumps(result))
 
         except KeyboardInterrupt:
             logger.info("stopped")

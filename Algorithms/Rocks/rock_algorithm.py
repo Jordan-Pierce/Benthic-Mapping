@@ -3,6 +3,7 @@ import os
 import cv2
 import numpy as np
 
+import torch
 from torch.cuda import is_available
 
 import supervision as sv
@@ -60,7 +61,7 @@ def calculate_slice_parameters(height, width, slices_x=2, slices_y=2, overlap_pe
     return (adjusted_slice_width, adjusted_slice_height), (overlap_ratio_w, overlap_ratio_h)
 
 
-def mask_to_polygons(masks):
+def mask_to_polygons(masks, logger):
     """
 
     :param masks:
@@ -68,7 +69,6 @@ def mask_to_polygons(masks):
     """
     # Get the contours for each of the masks
     polygons = []
-
     for mask in masks:
 
         try:
@@ -80,8 +80,8 @@ def mask_to_polygons(masks):
             # Convert the contour to a numpy array and append to the list
             polygons.append(largest_contour.squeeze())
 
-        except Exception as e:
-            pass
+        except Exception as exc:
+            continue
 
     return polygons
 
@@ -206,7 +206,7 @@ class RockAlgorithm:
         print(f"...done slicer_callback")
         return results
 
-    def apply_smol(self, frame, detections):
+    def apply_smol(self, frame, detections, logger):
         """
         Performs SAHI on a masked frame, where masked regions are areas
         that have already been detected / segmented by initial inference.
@@ -216,7 +216,7 @@ class RockAlgorithm:
         :return:
         """
 
-        print(f"[{datetime.datetime.now()} Applying SAHI")
+        logger.info(f"Applying SAHI")
 
         if self.slicer is None:
             # Setup on the first frame
@@ -225,38 +225,41 @@ class RockAlgorithm:
         if detections:
             # Mask out the frame where previous detections were
             masked_frame = mask_image(frame, detections.mask)
-            print(f"[{datetime.datetime.now()} Created mask image")
+            logger.info(f"... Created mask image")
             smol_detections = self.slicer(masked_frame)
-            print(f"[{datetime.datetime.now()} Created detections for each slice")
-            smol_detections = self.apply_sam(masked_frame, smol_detections)
-            print(f"[{datetime.datetime.now()} Applied SAM on sliced detections")
+            logger.info(f"... Created detections for each slice")
+            smol_detections = self.apply_sam(masked_frame, smol_detections, logger)
+            logger.info(f"... Applied SAM on sliced detections")
 
             if smol_detections:
                 # If any smol detections, merge
-                print(f"[{datetime.datetime.now()} Merging SMOL detections with initial detections")
+                logger.info(f"... Merging SMOL detections with initial detections")
                 detections = sv.Detections.merge([detections, smol_detections])
 
+        logger.info(f"... (apply_smol) done")
         return detections
 
-    def apply_sam(self, frame, detections):
+    def apply_sam(self, frame, detections, logger):
         """
 
         :param frame:
         :param detections:
         :return:
         """
-        print(f"[{datetime.datetime.now()}] Applying SAM")
+        logger.info(f"Applying SAM")
         if detections:
             # Pass bboxes to SAM, store masks in detections
             bboxes = detections.xyxy
+            logger.info(f"...running SAM")
             masks = self.sam_model(frame, bboxes=bboxes, device=self.device)[0]
+            logger.info(f"...ran SAM")
             masks = masks.masks.data.cpu().numpy()
             detections.mask = masks.astype(np.uint8)
 
-        print(f"[{datetime.datetime.now()}] ...done")
+        logger.info(f"... (apply_sam) done")
         return detections
 
-    def infer(self, original_frame) -> list:
+    def infer(self, original_frame, logger, image_width, image_height) -> list:
         """
         Performs inference on a single frame; if using smol mode, will use the
         slicer callback function to perform SAHI using supervision (detections will
@@ -271,32 +274,45 @@ class RockAlgorithm:
         conf = self.config["model_confidence_threshold"]
 
         # Perform detection normally
-        print(f"[{datetime.datetime.now()}] Performing rock detection on original image")
+        logger.info(f"Performing rock detection on original image")
         detections = self.yolo_model(original_frame,
                                      iou=iou,
                                      conf=conf,
                                      device=self.device,
                                      verbose=False)[0]
-        print(f"[{datetime.datetime.now()}] ...done")
+        logger.info(f"... (infer-1) done")
 
         # Convert results to supervision standards
         detections = sv.Detections.from_ultralytics(detections)
         # Perform segmentations with bboxes
-        print(f"[{datetime.datetime.now()}] Perofmring SAM on detections")
-        detections = self.apply_sam(original_frame, detections)
-        print(f"[{datetime.datetime.now()}] ...done")
+        logger.info(f"Performing SAM on detections")
+        detections = self.apply_sam(original_frame, detections, logger)
+        logger.info(f"... (infer-2) done")
+
+        #logger.info(torch.cuda.memory_summary())
+        #torch.cuda.empty_cache()
+        #logger.info(torch.cuda.memory_summary())
 
         if self.config["smol"]:
             # Perform detections / segmentations using SAHI
-            detections = self.apply_smol(original_frame, detections)
+            detections = self.apply_smol(original_frame, detections, logger)
+        logger.info(f"... (infer-3) done")
 
         # Do NMM / NMS with all detections (bboxes)
         detections = detections.with_nmm(iou, class_agnostic=True)
+        logger.info(f"... (infer-4) done")
         detections = detections.with_nms(iou, class_agnostic=True)
+        logger.info(f"... (infer-5) done")
 
         # Convert to polygons
-        polygons = mask_to_polygons(detections.mask)
+        polygons = mask_to_polygons(detections.mask, logger)
+        logger.info(f"... (infer-6) done")
         # Convert to points
         polygon_points = polygons_to_points(polygons, original_frame)
+        logger.info(f"... (infer-7) done")
+
+        #logger.info(torch.cuda.memory_summary())
+        #torch.cuda.empty_cache()
+        #logger.info(torch.cuda.memory_summary())
 
         return polygon_points
