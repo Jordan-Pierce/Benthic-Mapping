@@ -10,3 +10,4 @@
 /Algorithms/dist
 /Algorithms/temp_videos
 Notebooks/Roboflow_Download.ipynb
+__pycache__
