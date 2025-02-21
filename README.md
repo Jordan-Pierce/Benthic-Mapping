@@ -39,7 +39,9 @@ Lakes Rock Detector, and the MDBC Coral Automatic Recognition and Locator (CARL)
 conda create --name bm python==3.10 -y
 conda activate bm
 
-pip install -e .
+pip install uv
+
+uv pip install -e .
 
 conda install cuda-nvcc -c nvidia/label/cuda-11.8.0 -y
 conda install cudatoolkit=11.8 -c nvidia/label/cuda-11.8.0 -y
