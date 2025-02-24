@@ -15,8 +15,7 @@ setup(
         'tator',
         'ultralytics==8.3.0',
         'supervision==0.25.0',
-        'sahi',
-        'gradio',
+        'gradio==5.17.0',
     ],
     entry_points={
         'console_scripts': [

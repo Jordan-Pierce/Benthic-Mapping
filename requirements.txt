@@ -7,7 +7,6 @@ opencv-python-headless
 tator
 ffmpeg-python
 ultralytics==8.3.0
-dill
 supervision==0.25.0
-sahi==0.11.20
+dill
 scikit-image

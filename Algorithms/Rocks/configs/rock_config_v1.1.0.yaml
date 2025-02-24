@@ -4,7 +4,7 @@ description: "Rock mask creation using YOLO and SAM"
 # Model initialization
 model_confidence_threshold: 0.65
 iou_threshold: 0.25
-smol: True
+sahi: True
 model_type: "yolov10"
 model_path: "/repo/Data/best.pt"
-sam_model_path: "sam2_b.pt"
+sam_model_path: "mobile_sam.pt"
