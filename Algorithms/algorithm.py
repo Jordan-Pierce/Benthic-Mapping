@@ -120,6 +120,7 @@ class Algorithm:
             slice_wh, overlap_wh = calculate_slice_parameters(frame.shape[0], frame.shape[1])
             # Create the slicer object
             self.slicer = sv.InferenceSlicer(slice_wh=slice_wh,
+                                             overlap_ratio_wh=None,  # Must set to None manually, deprecated
                                              overlap_wh=overlap_wh,
                                              iou_threshold=0.25,  # Strict NMS
                                              callback=self.slicer_callback,

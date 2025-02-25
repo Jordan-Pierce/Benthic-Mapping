@@ -61,7 +61,7 @@ You'll be presented with a local URL that you can paste into your browser to acc
 - `Media ID`: Enter the ID of the media file you want to process.
 - `Confidence Threshold`: Set the confidence threshold for object detection; Higher values mean stricter detection.
 - `IoU Threshold`: Set the Intersection over Union threshold for object detection; Higher values mean less overlap allowed between detections.
-- `SMOL Mode`: Use SAHI to tile the image, make predictions on each, and then merge the results.
+- `SAHI Mode`: Use SAHI to tile the image, make predictions on each, and then merge the results.
 - `Model Type`: Select the architecture of the model corresponding to the model weights; either YOLO or RTDETR
 - `Model Weights`: Upload the file containing the trained model weights.
 - `Output`: The results and any messages from the algorithm will be displayed here.
