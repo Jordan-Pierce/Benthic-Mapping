@@ -1,13 +1,13 @@
 # Benthic-Mapping
 
-(for finding rocks)
+A library for automating detection of benthic habitats (for finding rocks, coral, and other benthic features)
 
+<details>
+<summary><h2>Tator Algorithms</h2></summary>
 
-## Tator Algorithms
+For production deployment in Tator
 
-For production in Tator
-
-### Install 
+### Installation
 
 ```bash
 # cmd
@@ -26,12 +26,17 @@ conda install cudatoolkit=11.8 -c nvidia/label/cuda-11.8.0 -y
 uv pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
 ```
 
-## Gradio App (local testing and debugging algorithms before in Tator)
+</details>
+
+<details>
+<summary><h2>Gradio App</h2></summary>
+
+For local testing and debugging algorithms before deployment in Tator.
 
 The `app.py` is a python script with a `gradio` interface that will allow you to test the functionality of the Great 
 Lakes Rock Detector, and the MDBC Coral Automatic Recognition and Locator (CARL) model.
 
-### Install 
+### Installation
 
 ```bash
 # cmd
@@ -52,7 +57,7 @@ uv pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --extra-index-url ht
 
 You'll be presented with a local URL that you can paste into your browser to access the app.
 
-## Parameters
+### Parameters
 
 - `Token`: [TATOR API Token](https://www.tator.io/docs/developer-guide/getting-started/get-an-api-token); This is required for authentication.
 - `Remember Token`: Check this box to save your token for future use; Stored as user variable on local machine.
@@ -66,8 +71,9 @@ You'll be presented with a local URL that you can paste into your browser to acc
 - `Model Weights`: Upload the file containing the trained model weights.
 - `Output`: The results and any messages from the algorithm will be displayed here.
 
-
 ### Model Weights
 
 Download the latest version of the weights (.pt) for each of the algorithms before running the app. The weights can be
 found after launching the app; please download and upload the weights to the app before running the algorithm.
+
+</details>

@@ -1,3 +1,7 @@
+import gc
+
+from torch import cuda
+
 import supervision as sv
 
 from Algorithms.algorithm import Algorithm
@@ -76,5 +80,9 @@ class RockAlgorithm(Algorithm):
         polygon_points = polygons_to_points(polygons, original_frame)
         print(f"Polygon conversion took: {time.time() - t0:.3f} seconds")
 
+        # Clear memory
+        cuda.empty_cache()
+        gc.collect()
+        
         print(f"Total processing time: {time.time() - start_time:.3f} seconds")
         return polygon_points

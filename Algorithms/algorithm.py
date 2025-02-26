@@ -167,7 +167,10 @@ class Algorithm:
             # Perform SAM on the detections, get the bounding boxes
             bboxes = detections.xyxy
             # Perform instance segmentation using SAM
-            masks = self.sam_model(frame, bboxes=bboxes, device=self.device)[0]
+            masks = self.sam_model(frame, 
+                                   bboxes=bboxes, 
+                                   imgsz=640,
+                                   device=self.device)[0]
             # Convert masks to numpy
             masks = masks.masks.data.cpu().numpy()
             detections.mask = masks.astype(np.uint8)

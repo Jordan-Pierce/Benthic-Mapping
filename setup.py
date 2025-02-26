@@ -16,6 +16,7 @@ setup(
         'ultralytics==8.3.0',
         'supervision==0.25.0',
         'gradio==5.17.0',
+        'fiftyone'
     ],
     entry_points={
         'console_scripts': [

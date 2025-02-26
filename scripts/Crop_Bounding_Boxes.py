@@ -17,7 +17,7 @@ random.seed(42)
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
 
-class ChipCreator:
+class CropBBoxes:
     def __init__(self, dataset_path, output_dir):
 
         self.classes = None
@@ -238,7 +238,7 @@ def main():
     dataset_path = args.dataset_path
     output_dir = args.output_dir
 
-    ChipCreator(dataset_path, output_dir).run()
+    CropBBoxes(dataset_path, output_dir).run()
 
 
 if __name__ == "__main__":

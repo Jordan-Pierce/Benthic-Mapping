@@ -1,3 +1,7 @@
+import gc
+
+from torch import cuda
+
 import supervision as sv
 
 from Algorithms.algorithm import Algorithm
@@ -68,6 +72,10 @@ class CoralAlgorithm(Algorithm):
         t5 = time.time()
         polygon_points = polygons_to_points(bboxes, original_frame)
         print(f"Convert to points time: {time.time() - t5:.3f}s")
+        
+        # Clear memory
+        cuda.empty_cache()
+        gc.collect()
 
         print(f"Total inference time: {time.time() - start_time:.3f}s")
         return polygon_points, conf
