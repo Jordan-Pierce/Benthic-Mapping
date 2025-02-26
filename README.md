@@ -1,6 +1,7 @@
 # Benthic-Mapping
 
-A library for automating detection of benthic habitats (for finding rocks, coral, and other benthic features)
+A library for automating detection within benthic habitats (for finding rocks, coral, and other benthic features). This
+library revolves around Tator.
 
 <details>
 <summary><h2>Tator Algorithms</h2></summary>
@@ -31,10 +32,7 @@ uv pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --extra-index-url ht
 <details>
 <summary><h2>Local</h2></summary>
 
-For local testing and debugging algorithms before deployment in Tator.
-
-The `app.py` is a python script with a `gradio` interface that will allow you to test the functionality of the Great 
-Lakes Rock Detector, and the MDBC Coral Automatic Recognition and Locator (CARL) model.
+For local testing and debugging algorithms before deployment in Tator. Also useful for data visualization.
 
 ### Installation
 
@@ -53,7 +51,15 @@ conda install cudatoolkit=11.8 -c nvidia/label/cuda-11.8.0 -y
 
 # Example for torch 2.0.0 and torchvision 0.15.1 w/ CUDA 11.8
 uv pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+
+# For using scripts/
+conda install ffmpeg
 ```
+
+### App
+
+The `app.py` is a python script with a `gradio` interface that will allow you to test the functionality of the Great 
+Lakes Rock Detector, and the MDBC Coral Automatic Recognition and Locator (CARL) model.
 
 You'll be presented with a local URL that you can paste into your browser to access the app.
 
