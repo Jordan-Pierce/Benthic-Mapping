@@ -29,7 +29,7 @@ uv pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --extra-index-url ht
 </details>
 
 <details>
-<summary><h2>Gradio App</h2></summary>
+<summary><h2>Local</h2></summary>
 
 For local testing and debugging algorithms before deployment in Tator.
 
