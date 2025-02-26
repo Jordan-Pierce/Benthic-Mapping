@@ -5,13 +5,14 @@ import gradio as gr
 import tator
 import cv2
 
-from Rocks.rock_algorithm import RockAlgorithm
-from Coral.coral_algorithm import CoralAlgorithm
+from Algorithms.Rocks.rock_algorithm import RockAlgorithm
+from Algorithms.Coral.coral_algorithm import CoralAlgorithm
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
+
 
 class TatorOperator:
     def __init__(self, token, project_id, media_id):
@@ -221,7 +222,7 @@ class TatorOperator:
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Gradio
+# Algorithms
 # ----------------------------------------------------------------------------------------------------------------------
 
 
@@ -232,7 +233,7 @@ def run_rock_algorithm(token,
                        frame_ranges,
                        conf,
                        iou,
-                       smol,
+                       sahi,
                        model_type,
                        model_weights,
                        progress=gr.Progress()):
@@ -246,7 +247,7 @@ def run_rock_algorithm(token,
     :param frame_ranges: String specifying frame ranges to process
     :param conf: Confidence threshold
     :param iou: IoU threshold
-    :param smol: Use SAHI
+    :param sahi: Use SAHI
     :param model_type: Type of model (YOLO, or RTDETR)
     :param model_weights: Path to model weights file
     :param progress: Gradio progress bar
@@ -261,10 +262,10 @@ def run_rock_algorithm(token,
         config = {
             "model_confidence_threshold": float(conf),
             "iou_threshold": float(iou),
-            "smol": bool(smol),
+            "sahi": bool(sahi),
             "model_type": str(model_type),
             "model_path": str(model_weights),
-            "sam_model_path": "sam2_b.pt"
+            "sam_model_path": "mobile_sam.pt"  # sam2_b.pt"
         }
 
         rock_algo = RockAlgorithm(config)
@@ -378,6 +379,11 @@ def run_coral_algorithm(token,
         return error_msg
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# GUI
+# ----------------------------------------------------------------------------------------------------------------------
+
+
 def launch_gui():
     """
     Launches the Benthic-Mapping GUI.
@@ -418,7 +424,7 @@ def launch_gui():
                         conf = gr.Slider(label="Confidence Threshold", minimum=0, maximum=1, value=0.5)
 
                         gr.Markdown("Use SAHI to detect smaller instances (slower).")
-                        smol = gr.Radio(choices=[True, False], label="SMOL Mode", value=False)
+                        sahi = gr.Radio(choices=[True, False], label="SAHI Mode", value=False)
 
                     with gr.Column():
                         gr.Markdown("Lower values mean less overlap allowed between detections.")
@@ -448,7 +454,7 @@ def launch_gui():
                         frame_ranges,
                         conf,
                         iou,
-                        smol,
+                        sahi,
                         model_type,
                         model_weights],
                 outputs=output

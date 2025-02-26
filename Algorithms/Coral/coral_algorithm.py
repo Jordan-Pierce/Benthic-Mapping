@@ -1,62 +1,22 @@
-import os
+import gc
 
-from torch.cuda import is_available
+from torch import cuda
 
 import supervision as sv
 
-from ultralytics import YOLO
-from ultralytics import RTDETR
+from Algorithms.algorithm import Algorithm
 
-# ----------------------------------------------------------------------------------------------------------------------
-# Functions
-# ----------------------------------------------------------------------------------------------------------------------
+from Algorithms.common import polygons_to_points
 
-
-def polygons_to_points(bboxes, image):
-    """
-    Convert bounding boxes to normalized x, y, w, h format.
-
-    Args:
-    bboxes (list): List of bounding boxes, each represented as a numpy array of shape (N, 4)
-    image (numpy.ndarray): The image array, used for normalization.
-
-    Returns:
-    list: List of normalized bounding boxes in [x, y, w, h] format.
-    """
-    # To hold the normalized bounding boxes
-    normalized_bboxes = []
-
-    for bbox in bboxes:
-        # Extract min and max x, y coordinates of the bounding box
-        min_x, min_y, max_x, max_y = bbox
-
-        # Calculate width and height
-        width = max_x - min_x
-        height = max_y - min_y
-
-        # Normalize x, y, width, and height
-        normalized_x = min_x / image.shape[1]
-        normalized_y = min_y / image.shape[0]
-        normalized_w = width / image.shape[1]
-        normalized_h = height / image.shape[0]
-
-        # Ensure normalized coordinates are within bounds
-        normalized_x = max(0, min(normalized_x, 1))
-        normalized_y = max(0, min(normalized_y, 1))
-        normalized_w = max(0, min(normalized_w, 1))
-        normalized_h = max(0, min(normalized_h, 1))
-
-        # Append normalized bounding box to the list
-        normalized_bboxes.append([normalized_x, normalized_y, normalized_w, normalized_h])
-
-    return normalized_bboxes
+import time
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
 
-class CoralAlgorithm:
+
+class CoralAlgorithm(Algorithm):
     """
     Coral detection algorithm
 
@@ -65,44 +25,13 @@ class CoralAlgorithm:
 
     def __init__(self, config: dict):
         """
-
         :param config:
         """
-        self.yolo_model = None
+        super().__init__(config)
 
-        self.config = config
-        self.device = 'cuda:0' if is_available() else 'cpu'
-        print("NOTE: Using device", self.device)
-
-    def initialize(self):
+    def infer(self, original_frame, image_width=None, image_height=None):
         """
-        Initializes the model
-
-        :return:
-        """
-        # Get the rock detection model path as specified in the config file
-        model_path = self.config["model_path"]
-
-        if not os.path.exists(model_path):
-            raise Exception(f"ERROR: Model weights not found in ({model_path})!")
-
-        try:
-            if "yolo" in self.config['model_type'].lower():
-                # Load the model weights
-                self.yolo_model = YOLO(model_path)
-            elif "rtdetr" in self.config['model_type'].lower():
-                self.yolo_model = RTDETR(model_path)
-            else:
-                raise Exception(f"ERROR: Model type {self.config['model_type']} not recognized!")
-
-        except Exception as e:
-            raise Exception(f"ERROR: Could not load model!\n{e}")
-
-        print(f"NOTE: Successfully loaded weights {model_path}")
-
-    def infer(self, original_frame):
-        """
-        Performs inference on a single frame; if using smol mode, will use the
+        Performs inference on a single frame; if using sahi mode, will use the
         slicer callback function to perform SAHI using supervision (detections will
         be aggregated together).
 
@@ -110,28 +39,43 @@ class CoralAlgorithm:
 
         :param original_frame:
         """
-        # Parameters in the config file
-        iou = self.config["iou_threshold"]
-        conf = self.config["model_confidence_threshold"]
+        start_time = time.time()
 
         # Perform detection normally
-        detections = self.yolo_model(original_frame,
-                                     iou=iou,
-                                     conf=conf,
-                                     device=self.device,
-                                     verbose=False)[0]
+        t1 = time.time()
+        detections = self.ultralytics_model(original_frame,
+                                            iou=self.iou,
+                                            conf=self.conf,
+                                            imgsz=self.imgsz,
+                                            device=self.device,
+                                            verbose=False)[0]
+        
+        print(f"YOLO inference time: {time.time() - t1:.3f}s")
 
         # Convert results to supervision standards
+        t2 = time.time()
         detections = sv.Detections.from_ultralytics(detections)
+        print(f"Convert to supervision time: {time.time() - t2:.3f}s")
 
         # Do NMM / NMS with all detections (bboxes)
-        detections = detections.with_nms(iou, class_agnostic=True)
+        t3 = time.time()
+        detections = detections.with_nms(self.iou, class_agnostic=True)
+        print(f"NMS time: {time.time() - t3:.3f}s")
 
         # Get the boxes
+        t4 = time.time()
         bboxes = detections.xyxy
         conf = detections.confidence.tolist()
+        print(f"Get boxes time: {time.time() - t4:.3f}s")
 
         # Convert to points
+        t5 = time.time()
         polygon_points = polygons_to_points(bboxes, original_frame)
+        print(f"Convert to points time: {time.time() - t5:.3f}s")
+        
+        # Clear memory
+        cuda.empty_cache()
+        gc.collect()
 
+        print(f"Total inference time: {time.time() - start_time:.3f}s")
         return polygon_points, conf
