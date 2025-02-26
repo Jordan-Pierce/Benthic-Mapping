@@ -1,6 +1,7 @@
 # Benthic-Mapping
 
-A library for automating detection of benthic habitats (for finding rocks, coral, and other benthic features)
+A library for automating detection within benthic habitats (for finding rocks, coral, and other benthic features). This
+library revolves around Tator.
 
 <details>
 <summary><h2>Tator Algorithms</h2></summary>
@@ -31,10 +32,7 @@ uv pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --extra-index-url ht
 <details>
 <summary><h2>Local</h2></summary>
 
-For local testing and debugging algorithms before deployment in Tator.
-
-The `app.py` is a python script with a `gradio` interface that will allow you to test the functionality of the Great 
-Lakes Rock Detector, and the MDBC Coral Automatic Recognition and Locator (CARL) model.
+For local testing and debugging algorithms before deployment in Tator. Also useful for data visualization.
 
 ### Installation
 
@@ -53,27 +51,27 @@ conda install cudatoolkit=11.8 -c nvidia/label/cuda-11.8.0 -y
 
 # Example for torch 2.0.0 and torchvision 0.15.1 w/ CUDA 11.8
 uv pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+
+conda install ffmpeg
 ```
 
-You'll be presented with a local URL that you can paste into your browser to access the app.
+### Scripts
 
-### Parameters
+- **Algorithm_Demo.py**: A Gradio-based web interface for running Rock and Coral detection algorithms on Tator media. Provides an interactive way to test models with configurable parameters.
 
-- `Token`: [TATOR API Token](https://www.tator.io/docs/developer-guide/getting-started/get-an-api-token); This is required for authentication.
-- `Remember Token`: Check this box to save your token for future use; Stored as user variable on local machine.
-- `Project ID`: Enter the ID of the Tator project you're working on; defaults to `155`.
-- `Frame Ranges`: Use commas to separate ranges, dashes for inclusive ranges, and single numbers for individual frames: 25-30, 45, 50
-- `Media ID`: Enter the ID of the media file you want to process.
-- `Confidence Threshold`: Set the confidence threshold for object detection; Higher values mean stricter detection.
-- `IoU Threshold`: Set the Intersection over Union threshold for object detection; Higher values mean less overlap allowed between detections.
-- `SAHI Mode`: Use SAHI to tile the image, make predictions on each, and then merge the results.
-- `Model Type`: Select the architecture of the model corresponding to the model weights; either YOLO or RTDETR
-- `Model Weights`: Upload the file containing the trained model weights.
-- `Output`: The results and any messages from the algorithm will be displayed here.
+- **Common.py**: Contains utility functions shared across multiple scripts, including dataset rendering, YAML configuration handling, and timestamp generation.
 
-### Model Weights
+- **Crop_Bounding_Boxes.py**: Creates a classification dataset by cropping objects from detection datasets based on bounding boxes. Organizes extracted chips into train/val/test splits by class.
 
-Download the latest version of the weights (.pt) for each of the algorithms before running the app. The weights can be
-found after launching the app; please download and upload the weights to the app before running the algorithm.
+- **Download_Labeled_Data.py**: Downloads labeled data from Tator, converting annotations into YOLO format. Supports filtering by search string and random sampling.
+
+- **Download_Media.py**: Batch downloads media files from Tator with options to convert videos to MP4 and extract frames at specified intervals.
+
+- **Fiftyone_Clustering.py**: Utilizes FiftyOne and UMAP to create visual clusters of images for exploring datasets and identifying patterns.
+
+- **Inference_Video.py**: Performs inference on videos using trained models (YOLO/RTDETR) with optional SAM segmentation, SAHI for small object detection, and tracking.
+
+- **Train_Model.py**: Trains object detection models with customizable parameters including weighted datasets for class imbalance and various optimization options.
+- 
 
 </details>
