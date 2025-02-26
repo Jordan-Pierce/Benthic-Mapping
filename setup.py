@@ -18,10 +18,5 @@ setup(
         'gradio==5.17.0',
         'fiftyone',
         'umap-learn>=0.5'
-    ],
-    entry_points={
-        'console_scripts': [
-            'benthic-mapping=app:launch_gui',
-        ],
-    },
+    ]
 )
