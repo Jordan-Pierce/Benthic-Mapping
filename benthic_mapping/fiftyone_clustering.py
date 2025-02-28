@@ -29,7 +29,7 @@ class FiftyOneDatasetViewer:
             overwrite = input(f"Dataset with nickname '{self.nickname}' already exists. Overwrite? (y/n): ").lower()
             if overwrite == 'y':
                 print(f"Overwriting existing dataset: {self.nickname}")
-                fo.delete_dataset(self.nickname, delete_media=False)  # Keep media to avoid data loss
+                fo.delete_dataset(self.nickname)
                 self.dataset = fo.Dataset(self.nickname)
             else:
                 print("Loading existing dataset.")
@@ -104,18 +104,27 @@ class FiftyOneDatasetViewer:
             seed=51,
         )
 
-    def process(self):
+    def process_dataset(self):
         """Main processing method"""
+        # Create or load dataset
         self.create_or_load_dataset()
 
         print("Computing embeddings...")
+        # Compute embeddings
         embeddings = self.compute_embeddings()
 
         print("Computing UMAP visualization...")
+        # Create UMAP visualization
         self.create_visualization(embeddings)
         self.dataset.load_brain_results(self.brain_key)
+        
+    def visualize(self):
+        """visualize the dataset"""
+        # Process the dataset
+        self.process_dataset()
 
         print(f"Launching FiftyOne App with visualization '{self.brain_key}'")
+        # Launch FiftyOne App
         session = fo.launch_app(self.dataset)
         session.wait()
 
@@ -176,13 +185,13 @@ def main():
     if args.image_dir:
         if not os.path.isdir(args.image_dir):
             raise ValueError(f"Directory not found: {args.image_dir}")
-        creator = FiftyOneDatasetViewer(args.image_dir, nickname=args.nickname)
+        viewer = FiftyOneDatasetViewer(args.image_dir, nickname=args.nickname)
     else:
         if args.dataset_name not in fo.list_datasets():
             raise ValueError(f"Dataset not found: {args.dataset_name}")
-        creator = FiftyOneDatasetViewer(None, dataset_name=args.dataset_name, nickname=args.nickname)
+        viewer = FiftyOneDatasetViewer(None, dataset_name=args.dataset_name, nickname=args.nickname)
 
-    creator.process()
+    viewer.visualize()
 
 
 if __name__ == "__main__":

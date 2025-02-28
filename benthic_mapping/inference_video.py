@@ -12,12 +12,11 @@ from ultralytics import SAM
 from ultralytics import YOLO
 from ultralytics import RTDETR
 
-import matplotlib.pyplot as plt
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Functions
 # ----------------------------------------------------------------------------------------------------------------------
+
 
 def calculate_slice_parameters(width: int, height: int, slices_x: int = 2, slices_y: int = 2, overlap: float = 0.25):
     """
@@ -62,10 +61,11 @@ def mask_image(image, masks):
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
 
+
 class VideoInferencer:
     def __init__(self, weights_path: str, model_type: str, video_path: str, output_dir: str,
                  start_at: int, end_at: int, conf: float, iou: float,
-                 track: bool, segment: bool, smol: bool, show: bool):
+                 track: bool, segment: bool, sahi: bool, show: bool):
         """
 
         :param weights_path:
@@ -77,7 +77,7 @@ class VideoInferencer:
         :param conf:
         :param iou:
         :param track:
-        :param smol:
+        :param sahi:
         :param show:
         """
         self.weights_path = weights_path
@@ -90,7 +90,7 @@ class VideoInferencer:
         self.iou = iou
         self.track = track
         self.segment = segment
-        self.smol = smol
+        self.sahi = sahi
         self.show = show
 
         self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
@@ -125,9 +125,9 @@ class VideoInferencer:
 
             if self.segment:
                 try:
-                    self.sam_model = SAM('sam2_b.pt')
+                    self.sam_model = SAM('mobile_sam.pt')
                 except Exception as e:
-                    self.sam_model = SAM('sam_b.pt')
+                    raise Exception(f"ERROR: Could not load SAM model!\n{e}")
 
             if self.track:
                 self.tracker = sv.ByteTrack()
@@ -167,7 +167,7 @@ class VideoInferencer:
 
         return results
 
-    def apply_smol(self, frame, detections):
+    def apply_sahi(self, frame, detections):
         """
         Performs SAHI on a masked frame, where masked regions are areas
         that have already been detected / segmented by initial inference.
@@ -183,15 +183,15 @@ class VideoInferencer:
             # Mask out the frame where previous detections were
             masked_frame = mask_image(frame, detections.mask)
             # Make predictions on the masked frame
-            smol_detections = self.slicer(masked_frame).with_nmm(0.1, class_agnostic=True)
+            sahi_detections = self.slicer(masked_frame).with_nmm(0.1, class_agnostic=True)
 
             if self.segment:
-                # Get SAM masks for the smol detections (original frame)
-                smol_detections = self.apply_sam(masked_frame, smol_detections)
+                # Get SAM masks for the sahi detections (original frame)
+                sahi_detections = self.apply_sam(masked_frame, sahi_detections)
 
-            if smol_detections:
-                # If any smol detections, merge
-                detections = sv.Detections.merge([detections, smol_detections])
+            if sahi_detections:
+                # If any sahi detections, merge
+                detections = sv.Detections.merge([detections, sahi_detections])
 
         return detections
 
@@ -211,7 +211,7 @@ class VideoInferencer:
 
         return detections
 
-    def run_inference(self):
+    def inference(self):
         """
         Runs inference on the video, range of frames specified.
 
@@ -248,8 +248,8 @@ class VideoInferencer:
                         detections = self.apply_sam(frame, detections)
 
                     # Perform smaller detections / segmentations
-                    if self.smol:
-                        detections = self.apply_smol(frame, detections)
+                    if self.sahi:
+                        detections = self.apply_sahi(frame, detections)
                         # Do NMM / NMS with all detections (bboxes)
                         detections = detections.with_nms(0.1, class_agnostic=True)
 
@@ -320,7 +320,7 @@ def main():
     parser.add_argument("--segment", action='store_true',
                         help="Uses SAM to create masks on detections (takes longer)")
 
-    parser.add_argument("--smol", action='store_true',
+    parser.add_argument("--sahi", action='store_true',
                         help="Uses SAHI to find smaller objects (takes longer)")
 
     parser.add_argument("--show", action='store_true',
@@ -329,7 +329,7 @@ def main():
     args = parser.parse_args()
 
     try:
-        inference = VideoInferencer(
+        inferencer = VideoInferencer(
             weights_path=args.weights_path,
             model_type=args.model_type,
             video_path=args.video_path,
@@ -340,10 +340,10 @@ def main():
             iou=args.iou,
             track=args.track,
             segment=args.segment,
-            smol=args.smol,
+            sahi=args.sahi,
             show=args.show
         )
-        inference.run_inference()
+        inferencer.inference()
         print("Done.")
     except Exception as e:
         print(f"ERROR: Could not finish process.\n{e}")
