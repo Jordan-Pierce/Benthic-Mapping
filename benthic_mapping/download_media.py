@@ -20,21 +20,27 @@ class MediaDownloader:
         """
         :param api_token: API token used for authentication
         :param project_id: The project identifier
-        :param output_dir: The root directory for all outputs.
+        :param output_dir: The output_dir directory for all outputs.
         """
         self.api_token = api_token
         self.project_id = project_id
         self.api = self._authenticate()
 
-        self.root = output_dir
-        self.raw_video_dir = os.path.join(self.root, "Raw_Videos")
-        self.converted_video_dir = os.path.join(self.root, "Converted_Videos")
-        self.extracted_frames_dir = os.path.join(self.root, "Extracted_Frames")
-        
+        self.output_dir = output_dir
+        self.raw_video_dir = os.path.join(self.output_dir, "Raw_Videos")
+        self.converted_video_dir = os.path.join(self.output_dir, "Converted_Videos")
+        self.extracted_frames_dir = os.path.join(self.output_dir, "Extracted_Frames")
+                
         # Create directories
         os.makedirs(self.raw_video_dir, exist_ok=True)
         os.makedirs(self.converted_video_dir, exist_ok=True)
         os.makedirs(self.extracted_frames_dir, exist_ok=True)
+        
+        # Track paths to all processed files
+        self.original_video_paths = []  # Paths to downloaded original videos
+        self.converted_video_paths = []  # Paths to converted videos
+        self.extracted_frame_dirs = []  # Paths to directories containing extracted frames
+        self.media_path_map = {}  # Maps media_id to both original and converted paths
 
     def _authenticate(self):
         """
@@ -72,6 +78,9 @@ class MediaDownloader:
         print(f"NOTE: Converting {input_file} to MP4...")
 
         if os.path.exists(output_file):
+            # Skip conversion if the file already exists
+            if output_file not in self.converted_video_paths:
+                self.converted_video_paths.append(output_file)
             return output_file
 
         ffmpeg_cmd = [
@@ -87,6 +96,9 @@ class MediaDownloader:
         try:
             subprocess.run(ffmpeg_cmd, check=True)
             print(f'Successfully converted {input_file} to {output_file}')
+            # Track the converted video path
+            if output_file not in self.converted_video_paths:
+                self.converted_video_paths.append(output_file)
         except subprocess.CalledProcessError as e:
             print(f'Error converting {input_file}: {e}')
             output_file = None
@@ -173,6 +185,10 @@ class MediaDownloader:
             
             print(f"Successfully extracted {sum(results)} frames to {output_subfolder}")
             
+            # Track this extracted frames directory
+            if output_subfolder not in self.extracted_frame_dirs:
+                self.extracted_frame_dirs.append(output_subfolder)
+            
         except subprocess.CalledProcessError as e:
             print(f"Error processing video {video_file}: {e}")
         
@@ -221,15 +237,33 @@ class MediaDownloader:
                 if os.path.exists(output_video_path):
                     print(f"NOTE: Media {media.name} downloaded successfully to {output_video_path}")
                     
+                    # Track the original video path
+                    if output_video_path not in self.original_video_paths:
+                        self.original_video_paths.append(output_video_path)
+                    
+                    # Initialize media path tracking
+                    if media_id not in self.media_path_map:
+                        self.media_path_map[media_id] = {
+                            "original": output_video_path, 
+                            "converted": None, 
+                            "frames": None
+                        }
+                    else:
+                        self.media_path_map[media_id]["original"] = output_video_path
+                    
                     if convert:
                         print(f"NOTE: Converting {media.name} to MP4...")
                         converted_path = self.convert_video(output_video_path, self.converted_video_dir)
                         if converted_path:
                             output_video_path = converted_path
+                            # Update the conversion path in the media path map
+                            self.media_path_map[media_id]["converted"] = converted_path
                             
                     if extract:
                         print(f"NOTE: Extracting frames from {media.name}...")
-                        self.extract_frames(output_video_path, every_n_seconds, crop_region)
+                        frames_dir = self.extract_frames(output_video_path, every_n_seconds, crop_region)
+                        # Update the frames directory in the media path map
+                        self.media_path_map[media_id]["frames"] = frames_dir
                 else:
                     print(f"ERROR: Media {media.name} did not download successfully; skipping")
 
@@ -239,6 +273,30 @@ class MediaDownloader:
                 print(f"ERROR: Could not process media {media_id}: {e}")
 
         return video_paths
+    
+    def get_all_media_paths(self) -> dict:
+        """
+        Returns a dictionary with all tracked media paths
+        
+        :return: Dictionary with lists of original videos, converted videos, and frame directories
+        """
+        return {
+            "original_videos": self.original_video_paths,
+            "converted_videos": self.converted_video_paths,
+            "frame_directories": self.extracted_frame_dirs,
+            "media_map": self.media_path_map
+        }
+    
+    def get_paths_for_media_id(self, media_id: str) -> dict:
+        """
+        Get all paths associated with a specific media ID
+        
+        :param media_id: The media ID to query
+        :return: Dictionary with paths for that media ID
+        """
+        if media_id in self.media_path_map:
+            return self.media_path_map[media_id]
+        return None
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -299,7 +357,7 @@ def main():
         type=str,
         default=os.path.join(os.path.dirname(
             os.path.dirname(os.path.realpath(__file__))), "data"),
-        help="Root directory for output files (default: ../data)"
+        help="output_dir directory for output files (default: ../data)"
     )
 
     # Processing Options

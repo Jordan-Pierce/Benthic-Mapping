@@ -17,6 +17,8 @@ setup(
         'supervision==0.25.0',
         'gradio==5.17.0',
         'fiftyone',
-        'umap-learn>=0.5'
+        'umap-learn>=0.5',
+        'ipykernel',
+        'ipywidgets'
     ]
 )
