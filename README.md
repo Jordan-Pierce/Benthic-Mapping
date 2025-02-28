@@ -3,8 +3,7 @@
 A library for automating detection within benthic habitats (for finding rocks, coral, and other benthic features). This
 library revolves around Tator.
 
-<details>
-<summary><h2>Tator Algorithms</h2></summary>
+## Tator Algorithms
 
 For production deployment in Tator
 
@@ -27,10 +26,7 @@ conda install cudatoolkit=11.8 -c nvidia/label/cuda-11.8.0 -y
 uv pip install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
 ```
 
-</details>
-
-<details>
-<summary><h2>Local</h2></summary>
+## Local
 
 For local testing and debugging algorithms before deployment in Tator. Also useful for data visualization.
 
@@ -57,15 +53,11 @@ conda install ffmpeg
 
 ### benthic_mapper
 
-</details>
-
-<details>
-<summary><h2>DetectionToClassifier</h2></summary>
+## DetectionToClassifier
 
 The `DetectionToClassifier` class is used to convert detection datasets into classification datasets by extracting crops from detection bounding boxes and organizing them into train/val/test splits by class.
 
-<details>
-<summary>Example Usage</summary>
+### Example Usage
 
 ```python
 from benthic_mapping.detection_to_classification import DetectionToClassifier
@@ -77,16 +69,11 @@ converter = DetectionToClassifier(dataset_path="path/to/detection/data.yaml", ou
 converter.process_dataset()
 ```
 
-</details>
-</details>
-
-<details>
-<summary><h2>YOLODataset</h2></summary>
+## YOLODataset
 
 The `YOLODataset` class is used to create a YOLO-formatted dataset for object detection. It takes a pandas DataFrame with annotation data and generates the necessary directory structure, labels, and configuration files.
 
-<details>
-<summary>Example Usage</summary>
+### Example Usage
 
 ```python
 import pandas as pd
@@ -102,16 +89,11 @@ dataset = YOLODataset(data=data, dataset_dir="path/to/output")
 dataset.process_dataset()
 ```
 
-</details>
-</details>
-
-<details>
-<summary><h2>FiftyOneDatasetViewer</h2></summary>
+## FiftyOneDatasetViewer
 
 The `FiftyOneDatasetViewer` class is used to create a FiftyOne dataset from a directory of images and generate a UMAP visualization of the dataset.
 
-<details>
-<summary>Example Usage</summary>
+### Example Usage
 
 ```python
 from benthic_mapping.fiftyone_clustering import FiftyOneDatasetViewer
@@ -123,16 +105,11 @@ viewer = FiftyOneDatasetViewer(image_dir="path/to/images")
 viewer.process()
 ```
 
-</details>
-</details>
-
-<details>
-<summary><h2>LabeledDataDownloader</h2></summary>
+## LabeledDataDownloader
 
 The `LabeledDataDownloader` class is used to download frames and labels from TATOR and create a YOLO-formatted dataset.
 
-<details>
-<summary>Example Usage</summary>
+### Example Usage
 
 ```python
 from benthic_mapping.download_labeled_data import LabeledDataDownloader
@@ -155,16 +132,11 @@ downloader = LabeledDataDownloader(
 downloader.download_data()
 ```
 
-</details>
-</details>
-
-<details>
-<summary><h2>MediaDownloader</h2></summary>
+## MediaDownloader
 
 The `MediaDownloader` class is used to download, convert, and extract frames from videos in TATOR.
 
-<details>
-<summary>Example Usage</summary>
+### Example Usage
 
 ```python
 from benthic_mapping.download_media import MediaDownloader
@@ -181,16 +153,11 @@ media_ids = [1, 2, 3]
 downloader.download(media_ids, convert=True, extract=True, every_n_seconds=1.0, crop_region=(1920, 1080, 0, 0))
 ```
 
-</details>
-</details>
-
-<details>
-<summary><h2>VideoInferencer</h2></summary>
+## VideoInferencer
 
 The `VideoInferencer` class is used to perform inference on video files using a pre-trained model.
 
-<details>
-<summary>Example Usage</summary>
+### Example Usage
 
 ```python
 from benthic_mapping.inference_video import VideoInferencer
@@ -206,16 +173,11 @@ inferencer = VideoInferencer(
 inferencer.run_inference()
 ```
 
-</details>
-</details>
-
-<details>
-<summary><h2>ModelTrainer</h2></summary>
+## ModelTrainer
 
 The `ModelTrainer` class is used to train a model using a YOLO-formatted dataset.
 
-<details>
-<summary>Example Usage</summary>
+### Example Usage
 
 ```python
 from benthic_mapping.model_training import ModelTrainer
@@ -230,6 +192,3 @@ trainer = ModelTrainer(
 # Train the model
 trainer.train()
 ```
-
-</details>
-</details>
