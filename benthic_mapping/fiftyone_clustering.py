@@ -29,7 +29,7 @@ class FiftyOneDatasetViewer:
             overwrite = input(f"Dataset with nickname '{self.nickname}' already exists. Overwrite? (y/n): ").lower()
             if overwrite == 'y':
                 print(f"Overwriting existing dataset: {self.nickname}")
-                fo.delete_dataset(self.nickname, delete_media=False)  # Keep media to avoid data loss
+                fo.delete_dataset(self.nickname)
                 self.dataset = fo.Dataset(self.nickname)
             else:
                 print("Loading existing dataset.")
@@ -104,18 +104,27 @@ class FiftyOneDatasetViewer:
             seed=51,
         )
 
-    def visualize(self):
+    def process_dataset(self):
         """Main processing method"""
+        # Create or load dataset
         self.create_or_load_dataset()
 
         print("Computing embeddings...")
+        # Compute embeddings
         embeddings = self.compute_embeddings()
 
         print("Computing UMAP visualization...")
+        # Create UMAP visualization
         self.create_visualization(embeddings)
         self.dataset.load_brain_results(self.brain_key)
+        
+    def visualize(self):
+        """visualize the dataset"""
+        # Process the dataset
+        self.process_dataset()
 
         print(f"Launching FiftyOne App with visualization '{self.brain_key}'")
+        # Launch FiftyOne App
         session = fo.launch_app(self.dataset)
         session.wait()
 

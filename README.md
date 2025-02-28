@@ -148,7 +148,8 @@ converter.process_dataset()
 
 #### FiftyOneDatasetViewer
 
-The `FiftyOneDatasetViewer` class is used to create a FiftyOne dataset from a directory of images and generate a UMAP visualization of the dataset.
+The `FiftyOneDatasetViewer` class is used to create a FiftyOne dataset from a directory of images and generate a UMAP 
+visualization of the dataset. This can be run from command line or in a notebook.
 
 ##### Example Usage
 
@@ -159,7 +160,9 @@ from benthic_mapping.fiftyone_clustering import FiftyOneDatasetViewer
 viewer = FiftyOneDatasetViewer(image_dir="path/to/images")
 
 # Process the dataset to create the FiftyOne dataset and generate the UMAP visualization
-viewer.visualize()
+viewer.process_dataset()
+
+
 ```
 
 #### ModelTrainer
