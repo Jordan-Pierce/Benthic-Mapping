@@ -178,7 +178,7 @@ class MediaDownloader:
         
         return output_subfolder
     
-    def download(self, media_ids: List[str], convert: bool = False, extract: bool = False,
+    def download_data(self, media_ids: List[str], convert: bool = False, extract: bool = False,
                  every_n_seconds: float = 1.0, crop_region: Optional[Tuple[int, int, int, int]] = None) -> List[str]:
         """
         Download video files, optionally converting them and extracting frames.
@@ -336,7 +336,7 @@ def main():
                                      args.project_id, 
                                      args.output_dir)
         # Download, convert, and extract
-        downloader.download(
+        downloader.download_data(
             args.media_ids,
             convert=args.convert,
             extract=args.extract,

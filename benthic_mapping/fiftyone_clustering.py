@@ -104,7 +104,7 @@ class FiftyOneDatasetViewer:
             seed=51,
         )
 
-    def process(self):
+    def visualize(self):
         """Main processing method"""
         self.create_or_load_dataset()
 
@@ -176,13 +176,13 @@ def main():
     if args.image_dir:
         if not os.path.isdir(args.image_dir):
             raise ValueError(f"Directory not found: {args.image_dir}")
-        creator = FiftyOneDatasetViewer(args.image_dir, nickname=args.nickname)
+        viewer = FiftyOneDatasetViewer(args.image_dir, nickname=args.nickname)
     else:
         if args.dataset_name not in fo.list_datasets():
             raise ValueError(f"Dataset not found: {args.dataset_name}")
-        creator = FiftyOneDatasetViewer(None, dataset_name=args.dataset_name, nickname=args.nickname)
+        viewer = FiftyOneDatasetViewer(None, dataset_name=args.dataset_name, nickname=args.nickname)
 
-    creator.process()
+    viewer.visualize()
 
 
 if __name__ == "__main__":
