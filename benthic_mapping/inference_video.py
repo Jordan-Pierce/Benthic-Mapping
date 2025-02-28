@@ -12,12 +12,11 @@ from ultralytics import SAM
 from ultralytics import YOLO
 from ultralytics import RTDETR
 
-import matplotlib.pyplot as plt
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Functions
 # ----------------------------------------------------------------------------------------------------------------------
+
 
 def calculate_slice_parameters(width: int, height: int, slices_x: int = 2, slices_y: int = 2, overlap: float = 0.25):
     """
@@ -61,6 +60,7 @@ def mask_image(image, masks):
 # ----------------------------------------------------------------------------------------------------------------------
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
+
 
 class VideoInferencer:
     def __init__(self, weights_path: str, model_type: str, video_path: str, output_dir: str,
@@ -125,9 +125,9 @@ class VideoInferencer:
 
             if self.segment:
                 try:
-                    self.sam_model = SAM('sam2_b.pt')
+                    self.sam_model = SAM('mobile_sam.pt')
                 except Exception as e:
-                    self.sam_model = SAM('sam_b.pt')
+                    raise Exception(f"ERROR: Could not load SAM model!\n{e}")
 
             if self.track:
                 self.tracker = sv.ByteTrack()

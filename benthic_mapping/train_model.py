@@ -17,6 +17,8 @@ from Common import create_training_yaml
 # ----------------------------------------------------------------------------------------------------------------------
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
+
+
 class YOLOWeightedDataset(YOLODataset):
     def __init__(self, *args, mode="train", **kwargs):
         """
@@ -102,25 +104,57 @@ class YOLOWeightedDataset(YOLODataset):
             return self.transforms(self.get_image_and_label(index))
 
 
-class ModelTrainer:
-    def __init__(self, args):
-        """
-        Initialize the ModelTrainer with command line arguments.
+# ----------------------------------------------------------------------------------------------------------------------
+# ModelTrainer
+# ----------------------------------------------------------------------------------------------------------------------
+    
 
-        :param args: Parsed command line arguments
+class ModelTrainer:
+    def __init__(self, training_data, epochs=50, weights="yolov8m.pt", model_path="", root_dir=None, run_dir=None,
+                 task='detect', cache=False, device=0, half=False, patience=10, batch=0.5, save_period=10, 
+                 plots=False, single_cls=False, weighted=False):
         """
-        self.args = args
+        Initialize the ModelTrainer with explicit parameters.
+
+        :param training_data: Path to training data (YAML or folder)
+        :param epochs: Number of training epochs
+        :param weights: Initial weights file
+        :param model_path: Path to pre-trained model
+        :param root_dir: Root directory for the project
+        :param run_dir: Directory to save run results
+        :param task: Task type (detect, classify, segment)
+        :param cache: Use caching for datasets
+        :param device: Device to run on
+        :param half: Use half precision
+        :param patience: Patience for early stopping
+        :param batch: Batch size as a fraction of GPU memory
+        :param save_period: Save checkpoint every x epochs
+        :param plots: Generate plots
+        :param single_cls: Train as single-class dataset
+        :param weighted: Use weighted sampling for training
+        """
+        self.training_data = training_data
+        self.num_epochs = epochs
+        self.weights = weights
+        self.model_path = model_path
+        self.task = task
+        self.cache = cache
+        self.device = device
+        self.half = half
+        self.patience = patience
+        self.batch = batch
+        self.save_period = save_period
+        self.plots = plots
+        self.single_cls = single_cls
+        self.weighted = weighted
 
         self.root = None
         self.run_dir = None
 
-        self.num_epochs = args.epochs
-        self.weights = args.weights
-
         # Updates root and run
-        self.set_root_directory(args.root_dir)
-        self.set_run_directory(args.run_dir)
-        self.create_training_data(args.training_data)
+        self.set_root_directory(root_dir)
+        self.set_run_directory(run_dir)
+        self.create_training_data(training_data)
 
         self.run_name = self.get_run_name()
         self.target_model = self.load_model()
@@ -154,7 +188,7 @@ class ModelTrainer:
 
         :return: Generated run name
         """
-        return f"{self.get_now()}_{self.args.task}_{self.weights.split('.')[0]}"
+        return f"{self.get_now()}_{self.task}_{self.weights.split('.')[0]}"
 
     def create_training_data(self, training_data):
         """
@@ -187,8 +221,8 @@ class ModelTrainer:
             else:
                 raise ValueError(f"Unrecognized weights type: {self.weights}")
 
-            if os.path.exists(self.args.model_path):
-                model.load_weights(self.args.model_path)
+            if os.path.exists(self.model_path):
+                model.load_weights(self.model_path)
 
             return model
 
@@ -210,23 +244,23 @@ class ModelTrainer:
 
         :return: Training results
         """
-        if self.args.weighted:
+        if self.weighted:
             build.YOLODataset = YOLOWeightedDataset
 
         results = self.target_model.train(
             data=self.training_data,
-            task=self.args.task,
-            cache=self.args.cache,
-            device=self.args.device,
-            half=self.args.half,
+            task=self.task,
+            cache=self.cache,
+            device=self.device,
+            half=self.half,
             epochs=self.num_epochs,
-            patience=self.args.patience,
-            batch=self.args.batch,
+            patience=self.patience,
+            batch=self.batch,
             project=self.run_dir,
             name=self.run_name,
-            save_period=self.args.save_period,
-            plots=self.args.plots,
-            single_cls=self.args.single_cls
+            save_period=self.save_period,
+            plots=self.plots,
+            single_cls=self.single_cls
         )
         print("Training completed.")
         return results
@@ -306,7 +340,24 @@ def main():
     args = parser.parse_args()
 
     try:
-        trainer = ModelTrainer(args)
+        trainer = ModelTrainer(
+            training_data=args.training_data,
+            epochs=args.epochs,
+            weights=args.weights,
+            model_path=args.model_path,
+            root_dir=args.root_dir,
+            run_dir=args.run_dir,
+            task=args.task,
+            cache=args.cache,
+            device=args.device,
+            half=args.half,
+            patience=args.patience,
+            batch=args.batch,
+            save_period=args.save_period,
+            plots=args.plots,
+            single_cls=args.single_cls,
+            weighted=args.weighted
+        )
         results = trainer.train_model()
         print("Done.")
     except Exception as e:

@@ -5,8 +5,8 @@ import gradio as gr
 import tator
 import cv2
 
-from Algorithms.Rocks.rock_algorithm import RockAlgorithm
-from Algorithms.Coral.coral_algorithm import CoralAlgorithm
+from Rocks.rock_algorithm import RockAlgorithm
+from Coral.coral_algorithm import CoralAlgorithm
 
 
 # ----------------------------------------------------------------------------------------------------------------------

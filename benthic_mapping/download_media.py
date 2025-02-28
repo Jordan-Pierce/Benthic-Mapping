@@ -15,7 +15,7 @@ from concurrent.futures import ProcessPoolExecutor
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-class VideoDownloader:
+class MediaDownloader:
     def __init__(self, api_token: str, project_id: int, output_dir: str):
         """
         :param api_token: API token used for authentication
@@ -332,7 +332,7 @@ def main():
 
     try:
         # Initialize the video downloader
-        downloader = VideoDownloader(args.api_token, 
+        downloader = MediaDownloader(args.api_token, 
                                      args.project_id, 
                                      args.output_dir)
         # Download, convert, and extract
