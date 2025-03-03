@@ -102,8 +102,7 @@ downloader = LabeledDataDownloader(
     frac=1.0,  
     dataset_name="your_dataset_name",  # Output Directory Name
     output_dir="path/to/output",
-    label_field="your_label_field",  # "ScientificName", "Label", etc
-    task="detect"  # Only keep bounding boxes, even if polygons ("segment")
+    label_field="your_label_field",  # "ScientificName", "Label", (or a list of fields)
 )
 
 # Download the data and create the dataset

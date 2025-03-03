@@ -19,7 +19,7 @@ import tator
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
 
-
+# TODO allow user to specify the resolution of the images being downloaded, keep aspect resolution
 class LabeledDataDownloader:
     def __init__(self,
                  api_token: str,
@@ -28,8 +28,7 @@ class LabeledDataDownloader:
                  frac: float,
                  dataset_name: str,
                  output_dir: str,
-                 label_field: str,
-                 task: str = "detect"):
+                 label_field: str or list):
         """
 
         :param api_token:
@@ -39,7 +38,7 @@ class LabeledDataDownloader:
         :param frac:
         :param dataset_name:
         :param output_dir:
-        :param label_field: Field name to use as the label
+        :param label_field: Field name(s) to use as the label(s), can be a single field or a list
         """
         self.api = None
 
@@ -47,10 +46,14 @@ class LabeledDataDownloader:
         self.project_id = project_id
         self.search_string = search_string
         self.frac = frac
-        self.label_field = label_field
+        
+        # Support both single field and list of fields
+        if isinstance(label_field, list):
+            self.label_field = label_field
+        else:
+            self.label_field = [label_field]
 
         self.dataset_name = dataset_name
-        self.task = task
 
         # Convert paths to absolute paths
         self.output_dir = os.path.abspath(output_dir)
@@ -63,7 +66,6 @@ class LabeledDataDownloader:
         self.query = None
         self.data = None
         self.data_dict = {}
-        self.classes = None
 
         self.authenticate()
         self.save_query_string()
@@ -126,15 +128,20 @@ class LabeledDataDownloader:
         data = []
         
         # Loop through the queries (Class - tator localization)
-        for q in tqdm(self.query, desc="Processing Query"):
+        for q in tqdm(self.query, desc="Processing query"):
 
             image_name = f"{q.media}_{q.frame}.jpg"
             label_name = f"{q.media}_{q.frame}.txt"
 
-            try:
-                label = str(q.attributes[self.label_field])
-            except Exception as e:
-                raise Exception(f"ERROR: Query includes instances without '{self.label_field}' field")
+            # Handle labels differently based on whether we have one field or multiple
+            if len(self.label_field) == 1:
+                # Single field - store as string
+                label = q.to_dict().get(self.label_field[0], None)
+            else:
+                # Multiple fields - store as nested dictionary
+                label = {}
+                for field in self.label_field:
+                    label[field] = q.to_dict().get(field, None)
 
             # Determine if the localization is a bounding box or a polygon
             if q.to_dict().get("points", None):
@@ -148,7 +155,9 @@ class LabeledDataDownloader:
                 # Get the bounding box from the query
                 x, y, width, height = q.x, q.y, q.width, q.height
             else:    
-                raise Exception("ERROR: Query includes instances without 'points' or 'x, y, width, height' fields")
+                # No polygon or bounding box, set to None
+                polygon = None
+                x, y, width, height = None, None, None, None
             
             # Create a dictionary for each row with absolute paths
             row_dict = {
@@ -293,17 +302,19 @@ def main():
     parser.add_argument("--output_dir", type=str, required=True,
                         help="Where to download data to")
 
-    parser.add_argument("--label_field", type=str, required=True,
-                        help="Field name to use as the label")
-    
-    parser.add_argument("--task", type=str, default="detect",
-                        help="Task type; detect will download bounding boxes, segment will download polygons")
+    parser.add_argument("--label_field", type=str, required=True, nargs='+',
+                        help="Field name(s) to use as the label; can be single field or a list of fields")
     
     args = parser.parse_args()
 
     try:
         # Convert output_dir to absolute path
         output_dir = os.path.abspath(args.output_dir)
+        
+        # Handle label_field as either single field or list
+        label_field = args.label_field
+        if len(label_field) == 1:
+            label_field = label_field[0]  # If only one field provided, convert from list to string
         
         # Download the data
         downloader = LabeledDataDownloader(api_token=args.api_token,
@@ -312,8 +323,7 @@ def main():
                                            frac=args.frac,
                                            dataset_name=args.dataset_name,
                                            output_dir=output_dir,
-                                           label_field=args.label_field,
-                                           task=args.task)
+                                           label_field=label_field)
 
         # Download the data
         downloader.download_data()

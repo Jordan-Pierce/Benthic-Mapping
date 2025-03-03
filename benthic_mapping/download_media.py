@@ -14,7 +14,7 @@ from concurrent.futures import ProcessPoolExecutor
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
 
-
+# TODO allow user to specify the resolution of the images being downloaded, keep aspect resolution
 class MediaDownloader:
     def __init__(self, api_token: str, project_id: int, output_dir: str):
         """
