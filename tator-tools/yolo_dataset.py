@@ -67,8 +67,7 @@ class YOLODataset:
         missing_columns = [col for col in self.standard_columns.values()
                            if col not in data.columns]
         if missing_columns:
-            raise ValueError(
-                f"DataFrame is missing required columns: {missing_columns}")
+            raise ValueError(f"DataFrame is missing required columns: {missing_columns}")
 
         self.data = data
         self.dataset_dir = dataset_dir
