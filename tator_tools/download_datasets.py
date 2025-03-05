@@ -23,7 +23,7 @@ import tator
 # ----------------------------------------------------------------------------------------------------------------------
 
 # TODO allow user to specify the resolution of the images being downloaded, keep aspect resolution
-class LabeledDataDownloader:
+class DatasetDownloader:
     def __init__(self,
                  api_token: str,
                  project_id: int,
@@ -423,13 +423,13 @@ def main():
             label_field = label_field[0]  # If only one field provided, convert from list to string
         
         # Download the data
-        downloader = LabeledDataDownloader(api_token=args.api_token,
-                                           project_id=args.project_id,
-                                           search_string=args.search_string,
-                                           frac=args.frac,
-                                           dataset_name=args.dataset_name,
-                                           output_dir=output_dir,
-                                           label_field=label_field)
+        downloader = DatasetDownloader(api_token=args.api_token,
+                                       project_id=args.project_id,
+                                       search_string=args.search_string,
+                                       frac=args.frac,
+                                       dataset_name=args.dataset_name,
+                                       output_dir=output_dir,
+                                       label_field=label_field)
 
         # Download the data
         downloader.download_data()
