@@ -153,12 +153,12 @@ class LabeledDataDownloader:
                 width, height = xmax - x, ymax - y
             elif (q.x is not None) and (q.y is not None) and (q.width is not None) and (q.height is not None):
                 # No polygon, set to None
-                polygon = None
+                polygon = []
                 # Get the bounding box from the query
                 x, y, width, height = q.x, q.y, q.width, q.height
             else:    
                 # No polygon or bounding box, set to None
-                polygon = None
+                polygon = []
                 x, y, width, height = None, None, None, None
             
             # Create a dictionary for each row with absolute paths

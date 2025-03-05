@@ -5,6 +5,8 @@ import shutil
 import argparse
 from tqdm.auto import tqdm
 
+import concurrent.futures
+
 import cv2
 import numpy as np
 import pandas as pd
@@ -75,25 +77,26 @@ class YOLODataset:
 
         self.data = data
         
-        self.output_dir = output_dir
+        # Convert to absolute paths
+        self.output_dir = os.path.abspath(output_dir)
         self.dataset_name = dataset_name
-        self.dataset_dir = os.path.join(output_dir, dataset_name)
+        self.dataset_dir = os.path.abspath(os.path.join(self.output_dir, dataset_name))
         
         self.train_ratio = train_ratio
         self.test_ratio = test_ratio
         self.classes = None
         self.class_to_id = None
 
-        # Create dataset directories if they don't exist
-        os.makedirs(f"{self.dataset_dir}/images/train", exist_ok=True)
-        os.makedirs(f"{self.dataset_dir}/images/val", exist_ok=True)
-        os.makedirs(f"{self.dataset_dir}/labels/train", exist_ok=True)
-        os.makedirs(f"{self.dataset_dir}/labels/val", exist_ok=True)
+        # Create dataset directories with new structure using absolute paths
+        os.makedirs(os.path.join(self.dataset_dir, "train", "images"), exist_ok=True)
+        os.makedirs(os.path.join(self.dataset_dir, "train", "labels"), exist_ok=True)
+        os.makedirs(os.path.join(self.dataset_dir, "valid", "images"), exist_ok=True)
+        os.makedirs(os.path.join(self.dataset_dir, "valid", "labels"), exist_ok=True)
         
         # Create test directories if test_ratio > 0
         if self.test_ratio > 0:
-            os.makedirs(f"{self.dataset_dir}/images/test", exist_ok=True)
-            os.makedirs(f"{self.dataset_dir}/labels/test", exist_ok=True)
+            os.makedirs(os.path.join(self.dataset_dir, "test", "images"), exist_ok=True)
+            os.makedirs(os.path.join(self.dataset_dir, "test", "labels"), exist_ok=True)
             
     def split_dataset(self):
         """
@@ -129,16 +132,16 @@ class YOLODataset:
         if 'yolo_label_path' not in self.data.columns:
             self.data['yolo_label_path'] = ''
 
-        # Update paths in the DataFrame
+        # Update paths in the DataFrame with absolute paths
         for image in train_images:
             # Get the image extension   
             ext = os.path.splitext(image)[-1]
             # Create a mask for the image
             mask = self.data['image_name'] == image
-            # Update paths for training set
-            image_paths = f"{self.dataset_dir}/images/train/{image}"
+            # Update paths for training set using absolute paths
+            image_paths = os.path.join(self.dataset_dir, "train", "images", image)
             self.data.loc[mask, 'yolo_image_path'] = image_paths
-            label_paths = f"{self.dataset_dir}/labels/train/{image.replace(ext, '.txt')}"
+            label_paths = os.path.join(self.dataset_dir, "train", "labels", image.replace(ext, '.txt'))
             self.data.loc[mask, 'yolo_label_path'] = label_paths
 
         for image in val_images:
@@ -146,10 +149,10 @@ class YOLODataset:
             ext = os.path.splitext(image)[-1]
             # Create a mask for the image
             mask = self.data['image_name'] == image
-            # Update paths for validation set
-            image_paths = f"{self.dataset_dir}/images/val/{image}"
+            # Update paths for validation set using absolute paths
+            image_paths = os.path.join(self.dataset_dir, "valid", "images", image)
             self.data.loc[mask, 'yolo_image_path'] = image_paths
-            label_paths = f"{self.dataset_dir}/labels/val/{image.replace(ext, '.txt')}"
+            label_paths = os.path.join(self.dataset_dir, "valid", "labels", image.replace(ext, '.txt'))
             self.data.loc[mask, 'yolo_label_path'] = label_paths
             
         for image in test_images:
@@ -157,14 +160,14 @@ class YOLODataset:
             ext = os.path.splitext(image)[-1]
             # Create a mask for the image
             mask = self.data['image_name'] == image
-            # Update paths for test set
-            image_paths = f"{self.dataset_dir}/images/test/{image}"
+            # Update paths for test set using absolute paths
+            image_paths = os.path.join(self.dataset_dir, "test", "images", image)
             self.data.loc[mask, 'yolo_image_path'] = image_paths
-            label_paths = f"{self.dataset_dir}/labels/test/{image.replace(ext, '.txt')}"
+            label_paths = os.path.join(self.dataset_dir, "test", "labels", image.replace(ext, '.txt'))
             self.data.loc[mask, 'yolo_label_path'] = label_paths
             
         # Print split information
-        print(f"Dataset split: {len(train_images)} train, {len(val_images)} val, {len(test_images)} test images")
+        print(f"Dataset split: {len(train_images)} train, {len(val_images)} valid, {len(test_images)} test images")
 
     def write_yaml(self):
         """
@@ -175,14 +178,15 @@ class YOLODataset:
         self.classes = self.data['label'].unique().tolist()
         self.class_to_id = {class_name: i for i, class_name in enumerate(self.classes)}
 
-        # Create data.yaml with support for test set
-        with open(f"{self.dataset_dir}/data.yaml", 'w') as f:
-            f.write(f"train: {os.path.join(self.dataset_dir, 'images/train')}\n")
-            f.write(f"val: {os.path.join(self.dataset_dir, 'images/val')}\n")
+        # Create data.yaml with support for test set and absolute paths
+        yaml_path = os.path.join(self.dataset_dir, "data.yaml")
+        with open(yaml_path, 'w') as f:
+            f.write(f"train: {os.path.join(self.dataset_dir, 'train', 'images')}\n")
+            f.write(f"val: {os.path.join(self.dataset_dir, 'valid', 'images')}\n")
             
             # Add test path if test_ratio > 0
             if self.test_ratio > 0:
-                f.write(f"test: {os.path.join(self.dataset_dir, 'images/test')}\n")
+                f.write(f"test: {os.path.join(self.dataset_dir, 'test', 'images')}\n")
                 
             f.write(f"nc: {len(self.classes)}\n")
             f.write(f"names: {self.classes}\n")
@@ -207,7 +211,7 @@ class YOLODataset:
         :return: None
         """
         # Group annotations by label path
-        for label_path, label_group in self.data.groupby('yolo_label_path'):
+        for label_path, label_group in tqdm(self.data.groupby('yolo_label_path'), desc="Writing detection labels"):
             # Ensure the directory exists
             os.makedirs(os.path.dirname(label_path), exist_ok=True)
 
@@ -233,8 +237,6 @@ class YOLODataset:
             with open(label_path, 'w') as f:
                 f.write('\n'.join(yolo_annotations))
 
-            print(f"Created detection label: {label_path}")
-
     def write_segmentation_labels(self):
         """
         Write YOLO-formatted polygon labels to text files for instance segmentation.
@@ -242,7 +244,7 @@ class YOLODataset:
         :return: None
         """
         # Group annotations by label path
-        for label_path, label_group in self.data.groupby('yolo_label_path'):
+        for label_path, label_group in tqdm(self.data.groupby('yolo_label_path'), desc="Writing segmentation labels"):
             # Ensure the directory exists
             os.makedirs(os.path.dirname(label_path), exist_ok=True)
 
@@ -255,15 +257,16 @@ class YOLODataset:
                 img_width, img_height = image.size
 
                 # Check if polygon data exists
-                if pd.isnull(row['polygon']):
+                if len(row['polygon']) == 0:
                     continue
 
                 try:
-                    # Polygon data stored as list
+                    # Polygon data stored as list of [x,y] coordinates
                     normalized_points = row['polygon']
                     
-                    # Format for YOLO segmentation: class_id x1 y1 x2 y2 ... xn yn
-                    points_str = " ".join([f"{p:.6f}" for p in normalized_points])
+                    # Flatten the list of coordinates and format for YOLO segmentation
+                    flattened_points = [coord for point in normalized_points for coord in point]
+                    points_str = " ".join([f"{p:.6f}" for p in flattened_points])
                     yolo_annotation = f"{class_id} {points_str}"
                     yolo_annotations.append(yolo_annotation)
                     
@@ -274,30 +277,29 @@ class YOLODataset:
             # Save annotations
             with open(label_path, 'w') as f:
                 f.write('\n'.join(yolo_annotations))
-
-            print(f"Created segmentation label: {label_path}")
         
-    def copy_images(self, move_instead_of_copy=False):
+    def copy_images(self, move_instead_of_copy=False, num_threads=None):
         """
         Copy or move images to the appropriate train/val/test directories based on the split.
 
         :param move_instead_of_copy: If True, move images instead of copying them
+        :param num_threads: Number of threads to use. If None, uses default (typically CPU count)
         :return: None
-        """
+        """        
         # Check if the DataFrame has the required columns
         if not all(col in self.data.columns for col in ['image_path', 'image_name', 'yolo_image_path']):
             raise ValueError("DataFrame must contain 'image_path', 'image_name' and 'yolo_image_path' columns")
 
         action_name = "Moving" if move_instead_of_copy else "Copying"
-
-        # Copy/move images to train, val, and test directories
-        for _, row in tqdm(self.data.iterrows(), total=len(self.data), desc=f"{action_name} images"):
-            # Get source and destination paths
-            src_path = row['image_path']
-            dst_path = os.path.dirname(row['yolo_image_path'])
-
-            dst_dir = os.path.dirname(dst_path)
-            os.makedirs(dst_dir, exist_ok=True)
+        
+        # Define worker function to copy/move a single file
+        def copy_image(src_path, dst_path):
+            # Make sure source path is absolute
+            if not os.path.isabs(src_path):
+                src_path = os.path.abspath(src_path)
+                
+            # Ensure destination directory exists
+            os.makedirs(os.path.dirname(dst_path), exist_ok=True)
 
             # Check if source exists and isn't already at destination
             if os.path.exists(src_path) and src_path != dst_path:
@@ -305,14 +307,28 @@ class YOLODataset:
                     shutil.move(src_path, dst_path)
                 else:
                     shutil.copy(src_path, dst_path)
-
+        
+        # Get unique image paths and their destinations
+        image_mapping = self.data[['image_path', 'yolo_image_path']].drop_duplicates()
+        total = len(image_mapping)
+        
+        # Create a thread pool executor
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+            # Submit unique file operations to the thread pool
+            futures = [executor.submit(copy_image, row['image_path'], row['yolo_image_path']) 
+                      for _, row in image_mapping.iterrows()]
+            
+            # Use tqdm to show progress
+            for _ in tqdm(concurrent.futures.as_completed(futures), total=total, desc=f"{action_name} images"):
+                pass
+        
     def render_examples(self, output_dir, num_examples=10, include_boxes=True, include_labels=True):
         """
-        Render examples from the dataset with annotations and save the images.
+        Render examples from the dataset with annotations (boxes or polygons) and save the images.
 
         :param output_dir: Directory to save rendered images
         :param num_examples: Number of examples to render (default: 10)
-        :param include_boxes: Whether to include bounding boxes in the rendering
+        :param include_boxes: Whether to include annotations in the rendering
         :param include_labels: Whether to include class labels in the rendering
         :return: None
         """
@@ -329,8 +345,9 @@ class YOLODataset:
             selected_images = unique_images
 
         # Create the annotation objects
-        box_annotator = sv.BoundingBoxAnnotator()
+        box_annotator = sv.BoxAnnotator()
         label_annotator = sv.LabelAnnotator()
+        polygon_annotator = sv.PolygonAnnotator()
 
         # Process each selected image
         for image_path in tqdm(selected_images, desc="Rendering Examples"):
@@ -348,42 +365,77 @@ class YOLODataset:
                 # Get annotations for this image
                 annotations_df = self.data[self.data['image_path'] == image_path]
 
-                # Create detections object
-                boxes = []
-                class_ids = []
+                if self.task == 'detect':
+                    # Create detections for bounding boxes
+                    boxes = []
+                    class_ids = []
 
-                for _, row in annotations_df.iterrows():
-                    # Convert YOLO format back to pixel coordinates
-                    x_center = row['x'] + row['width'] / 2
-                    y_center = row['y'] + row['height'] / 2
-                    w = row['width']
-                    h = row['height']
+                    for _, row in annotations_df.iterrows():
+                        # Convert from normalized to pixel coordinates
+                        x1 = int(row['x'] * img_width)
+                        y1 = int(row['y'] * img_height)
+                        x2 = int((row['x'] + row['width']) * img_width)
+                        y2 = int((row['y'] + row['height']) * img_height)
 
-                    # Calculate xyxy format
-                    x1 = x_center - w / 2
-                    y1 = y_center - h / 2
-                    x2 = x1 + w
-                    y2 = y1 + h
+                        boxes.append([x1, y1, x2, y2])
+                        class_ids.append(self.class_to_id[row['label']])
 
-                    boxes.append([x1, y1, x2, y2])
-                    class_ids.append(self.class_to_id[row['label']])
+                    detections = sv.Detections(
+                        xyxy=np.array(boxes),
+                        class_id=np.array(class_ids)
+                    )
 
-                # Create supervision detection object
-                detections = sv.Detections(
-                    xyxy=np.array(boxes),
-                    class_id=np.array(class_ids)
-                )
+                    # Annotate image with boxes
+                    if include_boxes:
+                        image = box_annotator.annotate(scene=image, detections=detections)
 
-                # Annotate image
-                if include_boxes:
-                    image = box_annotator.annotate(
-                        scene=image, detections=detections)
+                else:  
+                    # Create polygon annotations
+                    class_ids = []
+                    masks = []
+                    boxes = []
+    
+                    for _, row in annotations_df.iterrows():
+                        if not row['polygon'] or len(row['polygon']) == 0:
+                            continue
 
+                        # Convert list of coordinate pairs to numpy array 
+                        polygon_pixels = [[p[0] * img_width, p[1] * img_height] for p in row['polygon']]
+                        polygon_pixels = np.array(polygon_pixels)
+                        
+                        # Create bounding box for the polygon
+                        x1 = int(row['x'] * img_width)
+                        y1 = int(row['y'] * img_height)
+                        x2 = int((row['x'] + row['width']) * img_width)
+                        y2 = int((row['y'] + row['height']) * img_height)
+
+                        box = ([x1, y1, x2, y2])
+                        mask = sv.polygon_to_mask(polygon_pixels, (img_width, img_height))
+                        
+                        class_ids.append(self.class_to_id[row['label']])
+                        masks.append(mask)
+                        boxes.append(box)
+
+                    if include_boxes:
+                        detections = sv.Detections(
+                            xyxy=np.array(boxes),
+                            mask=np.array(masks),
+                            class_id=np.array(class_ids)
+                        )
+                            
+                    # Draw polygons on the image
+                    image = polygon_annotator.annotate(
+                        scene=image,
+                        detections=detections
+                    )
+
+                # Add labels if requested
                 if include_labels:
-                    # Map class IDs back to class names
-                    id_to_class = {v: k for k, v in self.class_to_id.items()}
-                    labels = [id_to_class[class_id] for class_id in detections.class_id]
-                    image = label_annotator.annotate(scene=image, detections=detections, labels=labels)
+                    if self.task == 'detect':
+                        # Map class IDs back to class names for bounding boxes
+                        id_to_class = {v: k for k, v in self.class_to_id.items()}
+                        labels = [id_to_class[class_id] for class_id in detections.class_id]
+                        image = label_annotator.annotate(scene=image, detections=detections, labels=labels)
 
                 # Save output image
                 output_file = os.path.join(output_dir, os.path.basename(image_path))
@@ -465,7 +517,7 @@ def main():
     # Create and process dataset
     dataset = YOLODataset(
         data=df,
-        output_dir=args.output_dir,
+        output_dir=os.path.abspath(args.output_dir),  # Convert to absolute path
         dataset_name=args.dataset_name,
         train_ratio=args.train_ratio,
         test_ratio=args.test_ratio,
@@ -474,7 +526,7 @@ def main():
     
     # Process the dataset
     dataset.process_dataset(move_images=args.move_images)
-    print(f"YOLO dataset processed successfully. Output directory: {os.path.join(args.output_dir, args.dataset_name)}")
+    print(f"YOLO dataset processed successfully. Output directory: {dataset.dataset_dir}")
     print("Done.")
 
 
