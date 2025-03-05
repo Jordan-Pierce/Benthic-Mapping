@@ -188,13 +188,21 @@ from tator_tools.model_training import ModelTrainer
 
 # Initialize the trainer with the required parameters
 trainer = ModelTrainer(
-    data_yaml="path/to/dataset/data.yaml",
-    model_config="yolov8.pt",
-    output_dir="path/to/output"
+    training_data=f"{dataset.dataset_dir}\\data.yaml",
+    weights="yolov8n.pt",                                       # See ultralytics website for models (8.3.0)
+    output_dir=f"{dataset.dataset_dir}\\Training",
+    task=dataset.task,
+    epochs=10,
+    half=True,
+    imgsz=640,
+    single_cls=True,
+    plots=True,
+    batch=0.5,
 )
 
 # Train the model
-trainer.train()
+trainer.train_model()
+trainer.evaluate_model()
 ```
 
 #### VideoInferencer
