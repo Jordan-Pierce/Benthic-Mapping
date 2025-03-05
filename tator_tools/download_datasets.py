@@ -128,51 +128,72 @@ class DatasetDownloader:
     def process_query(self):
         """
         Process the query by restructuring the data into a DataFrame;
-        each row contains a localization, and the media it belongs to.
+        each row contains a query object, and the media it belongs to.
         Then group by image_path and randomly sample.
 
         :return: None
         """
-        print(f"NOTE: Found {len(self.query)} localizations")
+        print(f"NOTE: Found {len(self.query)} objects in query")
         
         data = []
         
         # Loop through the queries (Class - tator localization)
         for q in tqdm(self.query, desc="Processing query"):
-
-            image_name = f"{q.media}_{q.frame}.jpg"
-
-            # Handle labels differently based on whether we have one field or multiple
-            if len(self.label_field) == 1:
-                # Single field - store as string
-                label = q.to_dict()['attributes'].get(self.label_field[0], None)
-            else:
-                # Multiple fields - store as nested dictionary
-                label = {}
-                for field in self.label_field:
-                    label[field] = q.to_dict()['attributes'].get(field, None)
+            
+            # Convert query object to dictionary
+            q_type = q.__class__.__name__
+            q_dict = q.to_dict()
+        
+            try:        
+                # Handle labels differently based on whether we have one field or multiple
+                if len(self.label_field) == 1:
+                    # Single field - store as string
+                    label = q_dict['attributes'].get(self.label_field[0], None)
+                else:
+                    # Multiple fields - store as nested dictionary
+                    label = {}
+                    for field in self.label_field:
+                        label[field] = q_dict['attributes'].get(field, None)
+                        
+            except Exception as e:
+                label = None
 
             # Determine if the localization is a bounding box or a polygon
-            if q.to_dict().get("points", None):
+            if q_dict.get("points", None):
                 # Get the polygon from the query
-                polygon = q.points
+                polygon = q_dict['points']
                 # Get the bounding box from the polygon
                 x, y, xmax, ymax = sv.polygon_to_xyxy(polygon)
                 width, height = xmax - x, ymax - y
-            elif (q.x is not None) and (q.y is not None) and (q.width is not None) and (q.height is not None):
+            elif q_dict.get('x') and q_dict.get('y') and q_dict.get('width') and q_dict.get('height'):
                 # No polygon, set to None
                 polygon = []
                 # Get the bounding box from the query
-                x, y, width, height = q.x, q.y, q.width, q.height
+                x, y, width, height = q_dict['x'], q_dict['y'], q_dict['width'], q_dict['height']
             else:    
                 # No polygon or bounding box, set to None
                 polygon = []
                 x, y, width, height = None, None, None, None
-            
+                
+            # Determine if q is a media or localization
+            if q_type == "Media":
+                # Media object
+                media = q_dict['id']
+                frame = 0
+                image_name = q_dict['name']
+            elif q_type == "Localization":
+                # Localization object
+                media = q_dict['media']
+                frame = q_dict['frame']
+                image_name = f"{media}_{frame}.jpg"
+            else:
+                print(f"WARNING: Query object is not a media or localization\nType:{type(q_type)}")
+                continue
+
             # Create a dictionary for each row with absolute paths
             row_dict = {
-                'media': q.media,
-                'frame': q.frame,
+                'media': media,
+                'frame': frame,
                 'image_name': image_name,
                 'image_path': os.path.abspath(f"{self.image_dir}/{image_name}"),
                 'x': x,
@@ -198,7 +219,7 @@ class DatasetDownloader:
             # Reset index after sampling
             self.data = sampled_data.reset_index(drop=True)
         
-        print(f"NOTE: Found {len(self.data)} localizations after sampling")
+        print(f"NOTE: Found {len(self.data)} query objects after sampling")
         
         # Save the data to disk
         self.to_csv(f"{self.dataset_dir}/data.csv")
