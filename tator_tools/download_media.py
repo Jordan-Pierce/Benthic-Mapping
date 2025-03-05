@@ -14,7 +14,7 @@ from concurrent.futures import ProcessPoolExecutor
 # Classes
 # ----------------------------------------------------------------------------------------------------------------------
 
-
+# TODO allow user to specify the resolution of the images being downloaded, keep aspect resolution
 class MediaDownloader:
     def __init__(self, api_token: str, project_id: int, output_dir: str):
         """
@@ -26,7 +26,8 @@ class MediaDownloader:
         self.project_id = project_id
         self.api = self._authenticate()
 
-        self.output_dir = output_dir
+        # Make sure output_dir is absolute
+        self.output_dir = os.path.abspath(output_dir)
         self.raw_video_dir = os.path.join(self.output_dir, "Raw_Videos")
         self.converted_video_dir = os.path.join(self.output_dir, "Converted_Videos")
         self.extracted_frames_dir = os.path.join(self.output_dir, "Extracted_Frames")
@@ -40,7 +41,7 @@ class MediaDownloader:
         self.original_video_paths = []  # Paths to downloaded original videos
         self.converted_video_paths = []  # Paths to converted videos
         self.extracted_frame_dirs = []  # Paths to directories containing extracted frames
-        self.media_path_map = {}  # Maps media_id to both original and converted paths
+        self.data = {}  # Maps media_id to both original and converted paths
 
     def _authenticate(self):
         """
@@ -71,7 +72,12 @@ class MediaDownloader:
         except FileNotFoundError:
             raise FileNotFoundError("ERROR: ffmpeg is not installed; please install ffmpeg before continuing")
         
+        # Ensure output_dir is absolute
+        output_dir = os.path.abspath(output_dir)
         os.makedirs(output_dir, exist_ok=True)
+        
+        # Ensure input_file is absolute
+        input_file = os.path.abspath(input_file)
         base_name = os.path.splitext(os.path.basename(input_file))[0]
         output_file = os.path.join(output_dir, f"{base_name}.mp4")
         
@@ -108,6 +114,9 @@ class MediaDownloader:
     @staticmethod
     def _extract_single_frame(args):
         timestamp, frame_number, video_file, output_subfolder, crop_region = args
+        # Ensure paths are absolute
+        video_file = os.path.abspath(video_file)
+        output_subfolder = os.path.abspath(output_subfolder)
         output_file = os.path.join(output_subfolder, f"frame_{frame_number:04d}.jpg")
         
         # Build filter for optional cropping
@@ -149,9 +158,13 @@ class MediaDownloader:
         :return: The directory where the frames have been saved.
         """
         
+        # Ensure video_file is absolute
+        video_file = os.path.abspath(video_file)
+        
         # Create a subfolder in Extracted_Frames using the video file's base name
         base_name = os.path.splitext(os.path.basename(video_file))[0]
         output_subfolder = os.path.join(self.extracted_frames_dir, base_name)
+        output_subfolder = os.path.abspath(output_subfolder)
         os.makedirs(output_subfolder, exist_ok=True)
         
         # Get video duration using ffprobe
@@ -224,6 +237,7 @@ class MediaDownloader:
                 media_name, ext = media.name.split(".")
                 media_name = media_name.replace(":", "_")
                 output_video_path = os.path.join(self.raw_video_dir, f"{media_name}_converted.{ext}")
+                output_video_path = os.path.abspath(output_video_path)
                 
                 if not os.path.exists(output_video_path):
                     print(f"NOTE: Downloading {media.name}...")
@@ -242,14 +256,14 @@ class MediaDownloader:
                         self.original_video_paths.append(output_video_path)
                     
                     # Initialize media path tracking
-                    if media_id not in self.media_path_map:
-                        self.media_path_map[media_id] = {
+                    if media_id not in self.data:
+                        self.data[media_id] = {
                             "original": output_video_path, 
                             "converted": None, 
                             "frames": None
                         }
                     else:
-                        self.media_path_map[media_id]["original"] = output_video_path
+                        self.data[media_id]["original"] = output_video_path
                     
                     if convert:
                         print(f"NOTE: Converting {media.name} to MP4...")
@@ -257,13 +271,13 @@ class MediaDownloader:
                         if converted_path:
                             output_video_path = converted_path
                             # Update the conversion path in the media path map
-                            self.media_path_map[media_id]["converted"] = converted_path
+                            self.data[media_id]["converted"] = converted_path
                             
                     if extract:
                         print(f"NOTE: Extracting frames from {media.name}...")
                         frames_dir = self.extract_frames(output_video_path, every_n_seconds, crop_region)
                         # Update the frames directory in the media path map
-                        self.media_path_map[media_id]["frames"] = frames_dir
+                        self.data[media_id]["frames"] = frames_dir
                 else:
                     print(f"ERROR: Media {media.name} did not download successfully; skipping")
 
@@ -284,7 +298,7 @@ class MediaDownloader:
             "original_videos": self.original_video_paths,
             "converted_videos": self.converted_video_paths,
             "frame_directories": self.extracted_frame_dirs,
-            "media_map": self.media_path_map
+            "data_dict": self.data
         }
     
     def get_paths_for_media_id(self, media_id: str) -> dict:
@@ -294,8 +308,8 @@ class MediaDownloader:
         :param media_id: The media ID to query
         :return: Dictionary with paths for that media ID
         """
-        if media_id in self.media_path_map:
-            return self.media_path_map[media_id]
+        if media_id in self.data:
+            return self.data[media_id]
         return None
 
 
@@ -355,9 +369,9 @@ def main():
     output_group.add_argument(
         "--output_dir",
         type=str,
-        default=os.path.join(os.path.dirname(
-            os.path.dirname(os.path.realpath(__file__))), "data"),
-        help="output_dir directory for output files (default: ../data)"
+        default=os.path.abspath(os.path.join(os.path.dirname(
+            os.path.dirname(os.path.realpath(__file__))), "data")),
+        help="output_dir directory for output files (default: absolute path to ../data)"
     )
 
     # Processing Options
@@ -389,10 +403,13 @@ def main():
     args = parser.parse_args()
 
     try:
+        # Make output_dir absolute if it's not already
+        output_dir = os.path.abspath(args.output_dir)
+        
         # Initialize the video downloader
         downloader = MediaDownloader(args.api_token, 
                                      args.project_id, 
-                                     args.output_dir)
+                                     output_dir)
         # Download, convert, and extract
         downloader.download_data(
             args.media_ids,

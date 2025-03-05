@@ -1,7 +1,6 @@
-# Benthic-Mapping
+# tator-tools
 
-A library for automating detection within benthic habitats (for finding rocks, coral, and other benthic features). This
-library revolves around Tator.
+A library for automating detection within benthic habitats (for finding rocks, coral, and other benthic features). This library revolves around Tator.
 
 ## Tator Algorithms
 
@@ -13,8 +12,8 @@ library revolves around Tator.
 ```bash
 # cmd
 
-conda create --name bm python==3.10 -y
-conda activate bm
+conda create --name tt python==3.10 -y
+conda activate tt
 
 pip install uv
 
@@ -37,7 +36,7 @@ python Algorithms/app.py
 
 </details>
 
-## `benthic_mapping`
+## `tator_tools`
 
 For local testing and debugging algorithms before deployment in Tator. Also useful for data visualization.
 
@@ -46,8 +45,8 @@ For local testing and debugging algorithms before deployment in Tator. Also usef
 ```bash
 # cmd
 
-conda create --name bm python==3.10 -y
-conda activate bm
+conda create --name tt python==3.10 -y
+conda activate tt
 
 pip install uv
 
@@ -71,7 +70,7 @@ The `MediaDownloader` class is used to download, convert, and extract frames fro
 ##### Example Usage
 
 ```python
-from benthic_mapping.download_media import MediaDownloader
+from tator_tools.download_media import MediaDownloader
 
 # Initialize the downloader with the required parameters
 downloader = MediaDownloader(
@@ -92,7 +91,7 @@ The `LabeledDataDownloader` class is used to download frames / images and their 
 ##### Example Usage
 
 ```python
-from benthic_mapping.download_labeled_data import LabeledDataDownloader
+from tator_tools.download_labeled_data import LabeledDataDownloader
 
 # Initialize the downloader with the required parameters
 downloader = LabeledDataDownloader(
@@ -102,8 +101,7 @@ downloader = LabeledDataDownloader(
     frac=1.0,  
     dataset_name="your_dataset_name",  # Output Directory Name
     output_dir="path/to/output",
-    label_field="your_label_field",  # "ScientificName", "Label", etc
-    task="detect"  # Only keep bounding boxes, even if polygons ("segment")
+    label_field="your_label_field",  # "ScientificName", "Label", (or a list of fields)
 )
 
 # Download the data and create the dataset
@@ -119,7 +117,7 @@ with annotation data and generates the necessary directory structure, labels, an
 
 ```python
 import pandas as pd
-from benthic_mapping.yolo_dataset import YOLODataset
+from tator_tools.yolo_dataset import YOLODataset
 
 # Load your annotation data into a pandas DataFrame
 data = pd.read_csv("path/to/annotations.csv")
@@ -138,7 +136,7 @@ The `DetectionToClassifier` class is used to convert detection datasets into cla
 ##### Example Usage
 
 ```python
-from benthic_mapping.detection_to_classification import DetectionToClassifier
+from tator_tools.detection_to_classification import DetectionToClassifier
 
 # Initialize the converter with the path to the detection dataset's data.yaml file and the output directory
 converter = DetectionToClassifier(dataset_path="path/to/detection/data.yaml", output_dir="path/to/output")
@@ -155,7 +153,7 @@ visualization of the dataset. This can be run from command line or in a notebook
 ##### Example Usage
 
 ```python
-from benthic_mapping.fiftyone_clustering import FiftyOneDatasetViewer
+from tator_tools.fiftyone_clustering import FiftyOneDatasetViewer
 
 # Initialize the viewer with the path to the directory containing images
 viewer = FiftyOneDatasetViewer(image_dir="path/to/images")
@@ -173,7 +171,7 @@ The `ModelTrainer` class is used to train a model using a YOLO-formatted dataset
 ##### Example Usage
 
 ```python
-from benthic_mapping.model_training import ModelTrainer
+from tator_tools.model_training import ModelTrainer
 
 # Initialize the trainer with the required parameters
 trainer = ModelTrainer(
@@ -193,7 +191,7 @@ The `VideoInferencer` class is used to perform inference on video files using a 
 ##### Example Usage
 
 ```python
-from benthic_mapping.inference_video import VideoInferencer
+from tator_tools.inference_video import VideoInferencer
 
 # Initialize the inferencer with the required parameters
 inferencer = VideoInferencer(
