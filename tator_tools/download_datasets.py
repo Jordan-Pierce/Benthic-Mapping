@@ -23,7 +23,7 @@ import tator
 # ----------------------------------------------------------------------------------------------------------------------
 
 # TODO allow user to specify the resolution of the images being downloaded, keep aspect resolution
-class LabeledDataDownloader:
+class DatasetDownloader:
     def __init__(self,
                  api_token: str,
                  project_id: int,
@@ -111,8 +111,16 @@ class LabeledDataDownloader:
         """
         try:
             # Query TATOR for the desired data
-            print(f"NOTE: Querying Tator for labeled data")
-            self.query = self.api.get_localization_list(project=self.project_id, encoded_search=self.search_string)
+            print("NOTE: Querying Tator for labeled data")
+            self.query = self.api.get_localization_list(project=self.project_id, 
+                                                        encoded_search=self.search_string)
+            
+            if not self.query:
+                print("WARNING: No localization data found for search string; downloading media only")
+                self.query = self.api.get_media_list(project=self.project_id, 
+                                                     encoded_search=self.search_string)
+            if not self.query:
+                raise Exception("ERROR: No data found for search string")
 
         except Exception as e:
             raise Exception(f"ERROR: Could not query TATOR for data\n{e}")
@@ -120,51 +128,72 @@ class LabeledDataDownloader:
     def process_query(self):
         """
         Process the query by restructuring the data into a DataFrame;
-        each row contains a localization, and the media it belongs to.
+        each row contains a query object, and the media it belongs to.
         Then group by image_path and randomly sample.
 
         :return: None
         """
-        print(f"NOTE: Found {len(self.query)} localizations")
+        print(f"NOTE: Found {len(self.query)} objects in query")
         
         data = []
         
         # Loop through the queries (Class - tator localization)
         for q in tqdm(self.query, desc="Processing query"):
-
-            image_name = f"{q.media}_{q.frame}.jpg"
-
-            # Handle labels differently based on whether we have one field or multiple
-            if len(self.label_field) == 1:
-                # Single field - store as string
-                label = q.to_dict()['attributes'].get(self.label_field[0], None)
-            else:
-                # Multiple fields - store as nested dictionary
-                label = {}
-                for field in self.label_field:
-                    label[field] = q.to_dict()['attributes'].get(field, None)
+            
+            # Convert query object to dictionary
+            q_type = q.__class__.__name__
+            q_dict = q.to_dict()
+        
+            try:        
+                # Handle labels differently based on whether we have one field or multiple
+                if len(self.label_field) == 1:
+                    # Single field - store as string
+                    label = q_dict['attributes'].get(self.label_field[0], None)
+                else:
+                    # Multiple fields - store as nested dictionary
+                    label = {}
+                    for field in self.label_field:
+                        label[field] = q_dict['attributes'].get(field, None)
+                        
+            except Exception as e:
+                label = None
 
             # Determine if the localization is a bounding box or a polygon
-            if q.to_dict().get("points", None):
+            if q_dict.get("points", None):
                 # Get the polygon from the query
-                polygon = q.points
+                polygon = q_dict['points']
                 # Get the bounding box from the polygon
                 x, y, xmax, ymax = sv.polygon_to_xyxy(polygon)
                 width, height = xmax - x, ymax - y
-            elif (q.x is not None) and (q.y is not None) and (q.width is not None) and (q.height is not None):
+            elif q_dict.get('x') and q_dict.get('y') and q_dict.get('width') and q_dict.get('height'):
                 # No polygon, set to None
                 polygon = []
                 # Get the bounding box from the query
-                x, y, width, height = q.x, q.y, q.width, q.height
+                x, y, width, height = q_dict['x'], q_dict['y'], q_dict['width'], q_dict['height']
             else:    
                 # No polygon or bounding box, set to None
                 polygon = []
                 x, y, width, height = None, None, None, None
-            
+                
+            # Determine if q is a media or localization
+            if q_type == "Media":
+                # Media object
+                media = q_dict['id']
+                frame = 0
+                image_name = q_dict['name']
+            elif q_type == "Localization":
+                # Localization object
+                media = q_dict['media']
+                frame = q_dict['frame']
+                image_name = f"{media}_{frame}.jpg"
+            else:
+                print(f"WARNING: Query object is not a media or localization\nType:{type(q_type)}")
+                continue
+
             # Create a dictionary for each row with absolute paths
             row_dict = {
-                'media': q.media,
-                'frame': q.frame,
+                'media': media,
+                'frame': frame,
                 'image_name': image_name,
                 'image_path': os.path.abspath(f"{self.image_dir}/{image_name}"),
                 'x': x,
@@ -181,7 +210,7 @@ class LabeledDataDownloader:
         # Create DataFrame from the list of dictionaries
         self.data = pd.DataFrame(data)
 
-        if self.frac < 1:
+        if self.frac < 1 and not self.data.empty:
             # Group by image_path
             image_paths = self.data['image_path'].unique().tolist()
             sampled_images = random.sample(image_paths, int(len(image_paths) * self.frac))
@@ -190,7 +219,7 @@ class LabeledDataDownloader:
             # Reset index after sampling
             self.data = sampled_data.reset_index(drop=True)
         
-        print(f"NOTE: Found {len(self.data)} localizations after sampling")
+        print(f"NOTE: Found {len(self.data)} query objects after sampling")
         
         # Save the data to disk
         self.to_csv(f"{self.dataset_dir}/data.csv")
@@ -350,28 +379,32 @@ class LabeledDataDownloader:
             color_map = plt.cm.get_cmap('hsv')(np.linspace(0, 1, len(labels)))
             label_to_color = {label: color_map[i][:3] for i, label in enumerate(labels)}
             
-        # Loop through the sample
-        for i, row in sample.iterrows():
-            # Get the bounding box coordinates and polygon
-            x, y, w, h = row['x'], row['y'], row['width'], row['height']
-            polygon = row['polygon']
-            label = row['label']
-            color = label_to_color[label]
-            
-            # Draw polygon if it exists
-            if polygon is not None:
-                # Denormalize polygon coordinates
-                polygon_pixels = [[p[0] * image_width, p[1] * image_height] for p in polygon]
-                polygon_array = np.array(polygon_pixels)
-                plt.fill(polygon_array[:, 0], polygon_array[:, 1], alpha=0.3, color=color)
-                plt.plot(polygon_array[:, 0], polygon_array[:, 1], color=color, linewidth=2)
-            
-            # Draw bounding box if coordinates exist
-            if all(coord is not None for coord in [x, y, w, h]):
-                # Denormalize bounding box coordinates
-                x, y, w, h = x * image_width, y * image_height, w * image_width, h * image_height
-                rect = plt.Rectangle((x, y), w, h, linewidth=2, edgecolor=color, facecolor='none')
-                ax.add_patch(rect)
+        try:
+            # Loop through the sample
+            for i, row in sample.iterrows():
+                # Get the bounding box coordinates and polygon
+                x, y, w, h = row['x'], row['y'], row['width'], row['height']
+                polygon = row['polygon']
+                label = row['label']
+                color = label_to_color[label]
+                
+                # Draw polygon if it exists
+                if polygon is not None:
+                    # Denormalize polygon coordinates
+                    polygon_pixels = [[p[0] * image_width, p[1] * image_height] for p in polygon]
+                    polygon_array = np.array(polygon_pixels)
+                    plt.fill(polygon_array[:, 0], polygon_array[:, 1], alpha=0.3, color=color)
+                    plt.plot(polygon_array[:, 0], polygon_array[:, 1], color=color, linewidth=2)
+                
+                # Draw bounding box if coordinates exist
+                if all(coord is not None for coord in [x, y, w, h]):
+                    # Denormalize bounding box coordinates
+                    x, y, w, h = x * image_width, y * image_height, w * image_width, h * image_height
+                    rect = plt.Rectangle((x, y), w, h, linewidth=2, edgecolor=color, facecolor='none')
+                    ax.add_patch(rect)
+                    
+        except Exception as e:
+            print(f"Error displaying sample: {str(e)}")
                 
         # Display the image with the name from the first row
         if not sample.empty:
@@ -423,13 +456,13 @@ def main():
             label_field = label_field[0]  # If only one field provided, convert from list to string
         
         # Download the data
-        downloader = LabeledDataDownloader(api_token=args.api_token,
-                                           project_id=args.project_id,
-                                           search_string=args.search_string,
-                                           frac=args.frac,
-                                           dataset_name=args.dataset_name,
-                                           output_dir=output_dir,
-                                           label_field=label_field)
+        downloader = DatasetDownloader(api_token=args.api_token,
+                                       project_id=args.project_id,
+                                       search_string=args.search_string,
+                                       frac=args.frac,
+                                       dataset_name=args.dataset_name,
+                                       output_dir=output_dir,
+                                       label_field=label_field)
 
         # Download the data
         downloader.download_data()

@@ -11,8 +11,6 @@ from ultralytics import RTDETR
 import ultralytics.data.build as build
 from ultralytics.data.dataset import YOLODataset
 
-from Common import create_training_yaml
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Classes
@@ -110,8 +108,8 @@ class YOLOWeightedDataset(YOLODataset):
     
 
 class ModelTrainer:
-    def __init__(self, training_data, epochs=50, weights="yolov8m.pt", model_path="", root_dir=None, run_dir=None,
-                 task='detect', cache=False, device=0, half=False, patience=10, batch=0.5, save_period=10, 
+    def __init__(self, training_data, epochs=50, weights="yolov8m.pt", model_path="", output_dir=None, name=None,
+                 task='detect', cache=False, device=0, half=False, imgsz=640, patience=10, batch=0.5, save_period=10, 
                  plots=False, single_cls=False, weighted=False):
         """
         Initialize the ModelTrainer with explicit parameters.
@@ -120,12 +118,13 @@ class ModelTrainer:
         :param epochs: Number of training epochs
         :param weights: Initial weights file
         :param model_path: Path to pre-trained model
-        :param root_dir: Root directory for the project
-        :param run_dir: Directory to save run results
+        :param output_dir: Output directory for the project
+        :param name: Directory to save run results
         :param task: Task type (detect, classify, segment)
         :param cache: Use caching for datasets
         :param device: Device to run on
         :param half: Use half precision
+        :param imgsz: Image size for training
         :param patience: Patience for early stopping
         :param batch: Batch size as a fraction of GPU memory
         :param save_period: Save checkpoint every x epochs
@@ -141,6 +140,7 @@ class ModelTrainer:
         self.cache = cache
         self.device = device
         self.half = half
+        self.imgsz = imgsz if imgsz else 640
         self.patience = patience
         self.batch = batch
         self.save_period = save_period
@@ -148,39 +148,25 @@ class ModelTrainer:
         self.single_cls = single_cls
         self.weighted = weighted
 
-        self.root = None
-        self.run_dir = None
+        # Set the output directory and run name
+        self.name = name if name else self.get_run_name()
+        self.output_dir = f"{output_dir}"
+        os.makedirs(self.output_dir, exist_ok=True)
+        
+        # Set the training data
+        if os.path.exists(self.training_data):
+            self.training_data = training_data
 
-        # Updates root and run
-        self.set_root_directory(root_dir)
-        self.set_run_directory(run_dir)
-        self.create_training_data(training_data)
-
-        self.run_name = self.get_run_name()
         self.target_model = self.load_model()
-
-    def set_root_directory(self, root_dir):
+        
+    @staticmethod
+    def get_now():
         """
-        Get and validate the root directory.
+        Get current datetime as a formatted string.
 
-        :param root_dir: Root directory path
-        :return: Validated root directory path
+        :return: Formatted current datetime
         """
-        root = root_dir or os.path.dirname(os.path.dirname(os.path.realpath(__file__))) + "/Data"
-        root = root.replace("\\", "/")
-        assert os.path.exists(root), f"Root directory not found: {root}"
-        self.root = root
-
-    def set_run_directory(self, run_dir):
-        """
-        Create the run directory if it doesn't exist.
-
-        :param run_dir: Run directory path
-        :return: Run directory path
-        """
-        run_dir = run_dir or f"{self.root}/Runs"
-        os.makedirs(run_dir, exist_ok=True)
-        self.run_dir = run_dir
+        return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     def get_run_name(self):
         """
@@ -189,22 +175,6 @@ class ModelTrainer:
         :return: Generated run name
         """
         return f"{self.get_now()}_{self.task}_{self.weights.split('.')[0]}"
-
-    def create_training_data(self, training_data):
-        """
-
-        :return:
-        """
-        # Check if training data is already a YAML file
-        if training_data.endswith(".yaml"):
-            self.training_data = training_data
-            return
-        if os.path.isdir(training_data):
-            yaml_files = glob.glob(f"{training_data}/**/data.yaml")
-            if not yaml_files:
-                raise FileNotFoundError(f"No 'data.yaml' files found in '{training_data}'")
-
-            self.training_data = create_training_yaml(yaml_files, self.run_dir)
 
     def load_model(self):
         """
@@ -229,15 +199,6 @@ class ModelTrainer:
         except Exception as e:
             raise Exception(f"ERROR: Failed to load model.\n{e}")
 
-    @staticmethod
-    def get_now():
-        """
-        Get current datetime as a formatted string.
-
-        :return: Formatted current datetime
-        """
-        return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
     def train_model(self):
         """
         Train the model with the specified parameters.
@@ -253,11 +214,12 @@ class ModelTrainer:
             cache=self.cache,
             device=self.device,
             half=self.half,
+            imgsz=self.imgsz,
             epochs=self.num_epochs,
             patience=self.patience,
             batch=self.batch,
-            project=self.run_dir,
-            name=self.run_name,
+            project=self.output_dir,
+            name=self.name,
             save_period=self.save_period,
             plots=self.plots,
             single_cls=self.single_cls
@@ -267,8 +229,7 @@ class ModelTrainer:
 
     def evaluate_model(self):
         try:
-
-            results = self.target_model.val(
+            self.target_model.val(
                 data=self.training_data,
                 split='test',
                 save_json=True,
@@ -318,6 +279,9 @@ def main():
 
     parser.add_argument("--half", action="store_true",
                         help="Use half precision")
+    
+    parser.add_argument("--img_size", type=int, default=640,
+                        help="Image size for training")
 
     parser.add_argument("--patience", type=int, default=10,
                         help="Patience for early stopping")
@@ -340,6 +304,7 @@ def main():
     args = parser.parse_args()
 
     try:
+        # Define and train the model
         trainer = ModelTrainer(
             training_data=args.training_data,
             epochs=args.epochs,
@@ -351,6 +316,7 @@ def main():
             cache=args.cache,
             device=args.device,
             half=args.half,
+            img_size=args.img_size,
             patience=args.patience,
             batch=args.batch,
             save_period=args.save_period,
@@ -358,8 +324,9 @@ def main():
             single_cls=args.single_cls,
             weighted=args.weighted
         )
-        results = trainer.train_model()
+        trainer.train_model()
         print("Done.")
+        
     except Exception as e:
         print(f"ERROR: Could not finish process.\n{e}")
         print(traceback.format_exc())

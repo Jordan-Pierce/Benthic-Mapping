@@ -86,26 +86,33 @@ downloader.download_data(media_ids, convert=False, extract=True, every_n_seconds
 
 #### LabeledDataDownloader
 
-The `LabeledDataDownloader` class is used to download frames / images and their labels from TATOR and create a YOLO-formatted dataset. This class expects the encoded search string obtained from the Export Data utility offered in Tator's UI.
+The `DatasetDownloader` class is used to download frames / images and their labels from TATOR, which can be used to
+create YOLO-formatted datasets. This class expects the encoded search string obtained from the Export Data utility 
+offered in Tator's UI.
 
 ##### Example Usage
 
 ```python
-from tator_tools.download_labeled_data import LabeledDataDownloader
+from tator_tools.download_labeled_data import DatasetDownloader
 
 # Initialize the downloader with the required parameters
-downloader = LabeledDataDownloader(
+downloader = DatasetDownloader(
     api_token="your_api_token",
     project_id=123,
-    search_string="your_encoded_search_string",  # See Tator Metadata -> Export Data utility
-    frac=1.0,  
-    dataset_name="your_dataset_name",  # Output Directory Name
-    output_dir="path/to/output",
-    label_field="your_label_field",  # "ScientificName", "Label", (or a list of fields)
+    search_string="your_encoded_search_string",     # See Tator Metadata -> Export Data utility
+    frac=1.0,                                       # Sample dataset, if applicable
+    dataset_name="your_dataset_name",               # Output Directory Name
+    output_dir="path/to/output",                    # Output Directory
+    label_field="your_label_field",                 # "ScientificName", "Label", (or a list of fields)
 )
 
 # Download the data and create the dataset
 downloader.download_data()
+
+# View a sample
+downloader.display_sample()
+
+df = downloader.as_dataframe()  # as_dict()
 ```
 
 #### YOLODataset
@@ -120,13 +127,20 @@ import pandas as pd
 from tator_tools.yolo_dataset import YOLODataset
 
 # Load your annotation data into a pandas DataFrame
-data = pd.read_csv("path/to/annotations.csv")
+df = pd.read_csv("path/to/annotations.csv")
 
 # Initialize the YOLODataset with the DataFrame and the output directory
-dataset = YOLODataset(data=data, dataset_dir="path/to/output")
+dataset = YOLODataset(
+    data=df,
+    output_dir="path/to/output",                    # Output Directoy
+    dataset_name="YOLODataset_Detection",           # Output Directoy /Dataset Name -> train/valid/test, data.yaml 
+    train_ratio=0.8                                 # Training ratio -> train / valid
+    test_ratio=0.1,                                 # Testing ratio -> (train / valid) / test
+    task='detect'                                   # 'detect' or 'segment' (the latter needs polygons)
+)
 
 # Process the dataset to create the YOLO-formatted dataset
-dataset.process_dataset()
+dataset.process_dataset(move_images=False)  # Makes a copy of the images instead of moving them
 ```
 
 #### DetectionToClassifier
@@ -161,7 +175,6 @@ viewer = FiftyOneDatasetViewer(image_dir="path/to/images")
 # Process the dataset to create the FiftyOne dataset and generate the UMAP visualization
 viewer.process_dataset()
 
-
 ```
 
 #### ModelTrainer
@@ -175,13 +188,21 @@ from tator_tools.model_training import ModelTrainer
 
 # Initialize the trainer with the required parameters
 trainer = ModelTrainer(
-    data_yaml="path/to/dataset/data.yaml",
-    model_config="yolov8.pt",
-    output_dir="path/to/output"
+    training_data=f"{dataset.dataset_dir}\\data.yaml",
+    weights="yolov8n.pt",                                       # See ultralytics website for models (8.3.0)
+    output_dir=f"{dataset.dataset_dir}\\Training",
+    task=dataset.task,
+    epochs=10,
+    half=True,
+    imgsz=640,
+    single_cls=True,
+    plots=True,
+    batch=0.5,
 )
 
 # Train the model
-trainer.train()
+trainer.train_model()
+trainer.evaluate_model()
 ```
 
 #### VideoInferencer

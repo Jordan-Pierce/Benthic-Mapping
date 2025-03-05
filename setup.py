@@ -18,6 +18,7 @@ setup(
         'gradio==5.17.0',
         'fiftyone',
         'umap-learn>=0.5',
+        'yolo-tiling>=0.0.11',
         'ipykernel',
         'ipywidgets'
     ]
