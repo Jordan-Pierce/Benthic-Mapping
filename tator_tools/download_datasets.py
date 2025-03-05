@@ -111,8 +111,16 @@ class DatasetDownloader:
         """
         try:
             # Query TATOR for the desired data
-            print(f"NOTE: Querying Tator for labeled data")
-            self.query = self.api.get_localization_list(project=self.project_id, encoded_search=self.search_string)
+            print("NOTE: Querying Tator for labeled data")
+            self.query = self.api.get_localization_list(project=self.project_id, 
+                                                        encoded_search=self.search_string)
+            
+            if not self.query:
+                print("WARNING: No localization data found for search string; downloading media only")
+                self.query = self.api.get_media_list(project=self.project_id, 
+                                                     encoded_search=self.search_string)
+            if not self.query:
+                raise Exception("ERROR: No data found for search string")
 
         except Exception as e:
             raise Exception(f"ERROR: Could not query TATOR for data\n{e}")
@@ -181,7 +189,7 @@ class DatasetDownloader:
         # Create DataFrame from the list of dictionaries
         self.data = pd.DataFrame(data)
 
-        if self.frac < 1:
+        if self.frac < 1 and not self.data.empty:
             # Group by image_path
             image_paths = self.data['image_path'].unique().tolist()
             sampled_images = random.sample(image_paths, int(len(image_paths) * self.frac))
