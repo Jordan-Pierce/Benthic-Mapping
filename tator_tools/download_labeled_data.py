@@ -11,6 +11,9 @@ from functools import partial
 
 import pandas as pd
 import supervision as sv
+import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image
 
 import tator
 
@@ -65,7 +68,6 @@ class LabeledDataDownloader:
 
         self.query = None
         self.data = None
-        self.data_dict = {}
 
         self.authenticate()
         self.save_query_string()
@@ -135,19 +137,20 @@ class LabeledDataDownloader:
             # Handle labels differently based on whether we have one field or multiple
             if len(self.label_field) == 1:
                 # Single field - store as string
-                label = q.to_dict().get(self.label_field[0], None)
+                label = q.to_dict()['attributes'].get(self.label_field[0], None)
             else:
                 # Multiple fields - store as nested dictionary
                 label = {}
                 for field in self.label_field:
-                    label[field] = q.to_dict().get(field, None)
+                    label[field] = q.to_dict()['attributes'].get(field, None)
 
             # Determine if the localization is a bounding box or a polygon
             if q.to_dict().get("points", None):
                 # Get the polygon from the query
                 polygon = q.points
                 # Get the bounding box from the polygon
-                x, y, width, height = sv.polygon_to_xyxy(polygon)
+                x, y, xmax, ymax = sv.polygon_to_xyxy(polygon)
+                width, height = xmax - x, ymax - y
             elif (q.x is not None) and (q.y is not None) and (q.width is not None) and (q.height is not None):
                 # No polygon, set to None
                 polygon = None
@@ -188,18 +191,61 @@ class LabeledDataDownloader:
             self.data = sampled_data.reset_index(drop=True)
         
         print(f"NOTE: Found {len(self.data)} localizations after sampling")
+        
+        # Save the data to disk
+        self.to_csv(f"{self.dataset_dir}/data.csv")
+        self.to_json(f"{self.dataset_dir}/data.json")
+                    
+    def as_dict(self):
+        """
+        Convert the data to a dictionary for saving to disk.
+
+        :return: Dictionary of the data
+        """
+        # Convert data to dictionary
+        return self.data.to_dict('records')
+    
+    def as_dataframe(self):
+        """
+        Convert the data to a pandas DataFrame.
+
+        :return: DataFrame of the data
+        """
+        return self.data
+    
+    def to_csv(self, output_path="data.csv"):
+        """
+        Convert the data to a CSV file and save to disk.
+
+        :param output_path: Optional file path to save CSV to disk
+        :return: DataFrame of the data
+        """       
+        # If output path is provided, save to disk
+        if output_path:
+            output_path = os.path.abspath(output_path)
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            self.data.to_csv(output_path, index=False)
+            print(f"NOTE: Data saved to {output_path}")
+    
+    def to_json(self, output_path="data.json"):
+        """
+        Convert the data to a JSON string and optionally save to disk.
+
+        :param output_path: Optional file path to save JSON to disk
+        :return: JSON string of the data
+        """
+        # Convert dictionary to JSON string
+        json_data = json.dumps(self.as_dict(), indent=2)
+        
+        # If output path is provided, save to disk
+        if output_path:
+            output_path = os.path.abspath(output_path)
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, 'w') as f:
+                f.write(json_data)
+            print(f"NOTE: Data saved to {output_path}")
             
-        # Convert to dict
-        self.data_dict = self.data.to_dict('records')
-            
-        # Save the dataframe to disk as JSON with absolute path
-        json_path = os.path.abspath(f"{self.dataset_dir}/data.json")
-        with open(json_path, 'w') as f:
-            # Convert DataFrame to JSON with proper formatting
-            json_data = json.dumps(self.data_dict, indent=2)
-            f.write(json_data)
-            
-        print(f"NOTE: Data saved to {json_path}")
+        return json_data
 
     def download_images(self, max_workers=os.cpu_count() // 3, max_retries=3):
         """
@@ -208,6 +254,10 @@ class LabeledDataDownloader:
         :param max_workers: Maximum number of concurrent downloads
         :param max_retries: Maximum number of retry attempts per download
         """
+        if self.data.empty:
+            print("ERROR: No data to download images for")
+            return
+        
         print(f"NOTE: Downloading images to {self.image_dir}")
         
         # Get unique combinations of media ID and frame number
@@ -243,7 +293,7 @@ class LabeledDataDownloader:
             try:
                 # Get image dimensions from first matching row
                 frame_data = self.data[(self.data['media'] == item['media']) & 
-                                      (self.data['frame'] == item['frame'])].iloc[0]
+                                       (self.data['frame'] == item['frame'])].iloc[0]
                 
                 # Get the image from Tator at full resolution
                 temp = self.api.get_frame(id=item['media'],
@@ -272,6 +322,64 @@ class LabeledDataDownloader:
 
         # Download all the images
         self.download_images()
+        
+    def display_sample(self):
+        """
+        Display a sample of the data with images and labels overlaid.
+        """
+        # Get a sample of the data
+        if self.data.empty:
+            print("No data available to display sample")
+            return
+            
+        image_path = self.data.sample(1)['image_path'].values[0]
+        sample = self.data[self.data['image_path'] == image_path]
+        
+        # Load the image
+        image_ = plt.imread(image_path)
+        image_height, image_width = image_.shape[:2]
+        
+        # Create a single figure and axis
+        fig, ax = plt.subplots(figsize=(10, 8))
+        ax.imshow(image_)
+        
+        # Create a color map for unique labels
+        labels = sample['label'].unique().tolist()
+        
+        if len(labels):
+            color_map = plt.cm.get_cmap('hsv')(np.linspace(0, 1, len(labels)))
+            label_to_color = {label: color_map[i][:3] for i, label in enumerate(labels)}
+            
+        # Loop through the sample
+        for i, row in sample.iterrows():
+            # Get the bounding box coordinates and polygon
+            x, y, w, h = row['x'], row['y'], row['width'], row['height']
+            polygon = row['polygon']
+            label = row['label']
+            color = label_to_color[label]
+            
+            # Draw polygon if it exists
+            if polygon is not None:
+                # Denormalize polygon coordinates
+                polygon_pixels = [[p[0] * image_width, p[1] * image_height] for p in polygon]
+                polygon_array = np.array(polygon_pixels)
+                plt.fill(polygon_array[:, 0], polygon_array[:, 1], alpha=0.3, color=color)
+                plt.plot(polygon_array[:, 0], polygon_array[:, 1], color=color, linewidth=2)
+            
+            # Draw bounding box if coordinates exist
+            if all(coord is not None for coord in [x, y, w, h]):
+                # Denormalize bounding box coordinates
+                x, y, w, h = x * image_width, y * image_height, w * image_width, h * image_height
+                rect = plt.Rectangle((x, y), w, h, linewidth=2, edgecolor=color, facecolor='none')
+                ax.add_patch(rect)
+                
+        # Display the image with the name from the first row
+        if not sample.empty:
+            plt.title(f"Image: {os.path.basename(image_path)}, Labels: {labels}")
+            
+        plt.axis('off')  # Hide axes for cleaner display
+        plt.tight_layout()
+        plt.show()
 
 
 # ----------------------------------------------------------------------------------------------------------------------

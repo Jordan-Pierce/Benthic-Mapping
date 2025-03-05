@@ -41,7 +41,7 @@ class MediaDownloader:
         self.original_video_paths = []  # Paths to downloaded original videos
         self.converted_video_paths = []  # Paths to converted videos
         self.extracted_frame_dirs = []  # Paths to directories containing extracted frames
-        self.media_path_map = {}  # Maps media_id to both original and converted paths
+        self.data = {}  # Maps media_id to both original and converted paths
 
     def _authenticate(self):
         """
@@ -256,14 +256,14 @@ class MediaDownloader:
                         self.original_video_paths.append(output_video_path)
                     
                     # Initialize media path tracking
-                    if media_id not in self.media_path_map:
-                        self.media_path_map[media_id] = {
+                    if media_id not in self.data:
+                        self.data[media_id] = {
                             "original": output_video_path, 
                             "converted": None, 
                             "frames": None
                         }
                     else:
-                        self.media_path_map[media_id]["original"] = output_video_path
+                        self.data[media_id]["original"] = output_video_path
                     
                     if convert:
                         print(f"NOTE: Converting {media.name} to MP4...")
@@ -271,13 +271,13 @@ class MediaDownloader:
                         if converted_path:
                             output_video_path = converted_path
                             # Update the conversion path in the media path map
-                            self.media_path_map[media_id]["converted"] = converted_path
+                            self.data[media_id]["converted"] = converted_path
                             
                     if extract:
                         print(f"NOTE: Extracting frames from {media.name}...")
                         frames_dir = self.extract_frames(output_video_path, every_n_seconds, crop_region)
                         # Update the frames directory in the media path map
-                        self.media_path_map[media_id]["frames"] = frames_dir
+                        self.data[media_id]["frames"] = frames_dir
                 else:
                     print(f"ERROR: Media {media.name} did not download successfully; skipping")
 
@@ -298,7 +298,7 @@ class MediaDownloader:
             "original_videos": self.original_video_paths,
             "converted_videos": self.converted_video_paths,
             "frame_directories": self.extracted_frame_dirs,
-            "media_map": self.media_path_map
+            "data_dict": self.data
         }
     
     def get_paths_for_media_id(self, media_id: str) -> dict:
@@ -308,8 +308,8 @@ class MediaDownloader:
         :param media_id: The media ID to query
         :return: Dictionary with paths for that media ID
         """
-        if media_id in self.media_path_map:
-            return self.media_path_map[media_id]
+        if media_id in self.data:
+            return self.data[media_id]
         return None
 
 
