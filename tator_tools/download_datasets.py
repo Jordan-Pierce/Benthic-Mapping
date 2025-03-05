@@ -379,28 +379,32 @@ class DatasetDownloader:
             color_map = plt.cm.get_cmap('hsv')(np.linspace(0, 1, len(labels)))
             label_to_color = {label: color_map[i][:3] for i, label in enumerate(labels)}
             
-        # Loop through the sample
-        for i, row in sample.iterrows():
-            # Get the bounding box coordinates and polygon
-            x, y, w, h = row['x'], row['y'], row['width'], row['height']
-            polygon = row['polygon']
-            label = row['label']
-            color = label_to_color[label]
-            
-            # Draw polygon if it exists
-            if polygon is not None:
-                # Denormalize polygon coordinates
-                polygon_pixels = [[p[0] * image_width, p[1] * image_height] for p in polygon]
-                polygon_array = np.array(polygon_pixels)
-                plt.fill(polygon_array[:, 0], polygon_array[:, 1], alpha=0.3, color=color)
-                plt.plot(polygon_array[:, 0], polygon_array[:, 1], color=color, linewidth=2)
-            
-            # Draw bounding box if coordinates exist
-            if all(coord is not None for coord in [x, y, w, h]):
-                # Denormalize bounding box coordinates
-                x, y, w, h = x * image_width, y * image_height, w * image_width, h * image_height
-                rect = plt.Rectangle((x, y), w, h, linewidth=2, edgecolor=color, facecolor='none')
-                ax.add_patch(rect)
+        try:
+            # Loop through the sample
+            for i, row in sample.iterrows():
+                # Get the bounding box coordinates and polygon
+                x, y, w, h = row['x'], row['y'], row['width'], row['height']
+                polygon = row['polygon']
+                label = row['label']
+                color = label_to_color[label]
+                
+                # Draw polygon if it exists
+                if polygon is not None:
+                    # Denormalize polygon coordinates
+                    polygon_pixels = [[p[0] * image_width, p[1] * image_height] for p in polygon]
+                    polygon_array = np.array(polygon_pixels)
+                    plt.fill(polygon_array[:, 0], polygon_array[:, 1], alpha=0.3, color=color)
+                    plt.plot(polygon_array[:, 0], polygon_array[:, 1], color=color, linewidth=2)
+                
+                # Draw bounding box if coordinates exist
+                if all(coord is not None for coord in [x, y, w, h]):
+                    # Denormalize bounding box coordinates
+                    x, y, w, h = x * image_width, y * image_height, w * image_width, h * image_height
+                    rect = plt.Rectangle((x, y), w, h, linewidth=2, edgecolor=color, facecolor='none')
+                    ax.add_patch(rect)
+                    
+        except Exception as e:
+            print(f"Error displaying sample: {str(e)}")
                 
         # Display the image with the name from the first row
         if not sample.empty:
